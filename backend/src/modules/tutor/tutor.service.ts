@@ -281,34 +281,25 @@ Contexto pedagógico oficial de la clase: "${currentLesson.contextText || 'Funda
 Pregunta formulada: "${session.question}".
 Respuesta dada por el estudiante: "${dto.userResponse}".
 
-INSTRUCCIONES DE EVALUACIÓN Y GESTICULACIÓN PEDAGÓGICA:
+INSTRUCCIONES DE EVALUACIÓN:
 1. "isCorrect": boolean.
-   - true si el estudiante comprende el concepto esencial o la idea central expuesta en el contexto pedagógico.
-   - false si la respuesta es evasiva (ej: "no sé", "hola", respuestas vacías), inventada o contradice los fundamentos del tema.
+   - true si el estudiante comprende el concepto esencial o la idea central.
+   - false si la respuesta es evasiva (ej: "no sé", "no me acuerdo", "hola"), vacía, o contradice el concepto.
 
-2. "feedbackText": Retroalimentación oral directa y pedagógica (2 a 3 oraciones en texto limpio sin etiquetas):
-   - RECONOCIMIENTO ACTIVO: Demuestra siempre que leíste y entendiste lo que dijo el estudiante (por ejemplo: "Has mencionado que...", "Veo que asocias el tema con...", "Entiendo tu punto sobre...").
-   - SI ES CORRECTA (isCorrect=true): Felicítalo con entusiasmo y resalta por qué su razonamiento es acertado.
-   - SI ES INCORRECTA (isCorrect=false): Sé comprensivo y formativo. Aclara amablemente el error, explica el concepto correcto según el contexto pedagógico y dale un consejo didáctico para recordarlo.
+2. "feedbackText": Retroalimentación oral directa y concisa (máximo 2 oraciones en español):
+   - Si es correcta: felicítalo y resalta por qué su razonamiento es acertado.
+   - Si es incorrecta: explica brevemente el concepto correcto y dale un consejo didáctico amable.
 
 3. "avatarEmotion": Postura del avatar 3D:
-   - "celebrating": si la respuesta es correcta y demuestra dominio.
-   - "explaining": si la respuesta es acertada pero agregas una aclaración.
-   - "encouraging": si la respuesta es incorrecta o evasiva, para motivarlo a seguir aprendiendo.
+   - "celebrating": si es correcta.
+   - "explaining": si es parcialmente acertada o explicativa.
+   - "encouraging": si es incorrecta o evasiva.
 
-4. "speechSegments": Divide el feedbackText en oraciones secuenciales con la postura física para cada momento:
-   - "celebrating": cuando felicites o reconozcas un gran acierto.
-   - "explaining": cuando desarrolles la idea teórica o expliques el porqué.
-   - "encouraging": cuando motives a no rendirse o des un consejo didáctico.
-
-Responde ÚNICAMENTE en formato JSON:
+Responde ÚNICAMENTE en formato JSON conciso:
 {
   "isCorrect": boolean,
   "feedbackText": string,
-  "avatarEmotion": "celebrating" | "explaining" | "encouraging",
-  "speechSegments": [
-    { "text": string, "pose": "celebrating" | "explaining" | "encouraging" }
-  ]
+  "avatarEmotion": "celebrating" | "explaining" | "encouraging"
 }`;
 
       const aiResponse = await this.geminiService.generateJson<typeof fallbackEvaluation>(
@@ -379,24 +370,22 @@ Responde ÚNICAMENTE en formato JSON:
     let nextQuestion: AnswerModuleEvaluationResponseDto['nextQuestion'] = undefined;
     let finalSummary: AnswerModuleEvaluationResponseDto['finalSummary'] = undefined;
 
-    // Generar la siguiente pregunta ANTES de la transacción para no bloquear la BD ni exceder timeouts
+    // Preparar la siguiente pregunta de forma ultrarrápida sin duplicar llamadas costosas en CPU
     if (hasNextLesson) {
       const nextIndex = dto.lessonIndex + 1;
       const nextLesson = module.lessons[nextIndex];
-      const fallbackNextQ = `Pasemos a la lección "${nextLesson.title}": ¿Cómo explicarías este tema con un ejemplo?`;
+      const fallbackNextQ = `Pasemos a la lección "${nextLesson.title}": ¿Cuál es el concepto o idea principal que recuerdas de este tema?`;
 
       let nextQText = fallbackNextQ;
-      try {
-        const qPrompt = `Actúa como Docente Virtual.
-Formula la siguiente pregunta para la lección (${nextIndex + 1} de ${totalLessons}): "${nextLesson.title}".
-Contexto: "${nextLesson.contextText}".
-Pregunta directa, clara y estimulante (1 oración).
-Responde en JSON: { "questionText": string }`;
-
-        const qRes = await this.geminiService.generateJson(qPrompt, () => ({ questionText: fallbackNextQ }));
-        if (qRes && qRes.questionText) nextQText = qRes.questionText.trim();
-      } catch {
-        // fallback seguro
+      // Solo consultar IA adicional si el proveedor actual es ultrarrápido (Google Gemini en la nube)
+      if (this.geminiService.getLastUsedProvider().includes('Gemini')) {
+        try {
+          const qPrompt = `Formula una pregunta clara (1 sola oración) para la lección "${nextLesson.title}". Contexto: "${nextLesson.contextText}". Responde en JSON: { "questionText": string }`;
+          const qRes = await this.geminiService.generateJson(qPrompt, () => ({ questionText: fallbackNextQ }));
+          if (qRes && qRes.questionText) nextQText = qRes.questionText.trim();
+        } catch {
+          // fallback seguro
+        }
       }
 
       nextQuestion = {

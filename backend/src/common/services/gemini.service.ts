@@ -124,7 +124,8 @@ export class GeminiService implements OnModuleInit {
             format: 'json',
             options: {
               temperature: 0.2,
-              num_predict: 350,
+              num_predict: 180,
+              num_thread: 4,
             },
           }),
           signal: controller.signal,
