@@ -12,6 +12,17 @@ services:
     networks:
       - skylearn-network
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: skylearn-ollama-prod
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    networks:
+      - skylearn-network
+
   backend:
     build:
       context: ./backend
@@ -20,11 +31,14 @@ services:
     restart: unless-stopped
     depends_on:
       - postgres
+      - ollama
     environment:
       PORT: 3000
       DATABASE_URL: "postgresql://${DB_USER:-skylearn_admin}:${DB_PASSWORD:-securepassword123}@postgres:5432/${DB_NAME:-skylearn_db}?schema=public"
       JWT_SECRET: ${JWT_SECRET:-clave_secreta_jwt_demo_para_pruebas_locales_123}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-24h}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5-coder:1.5b}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-demo_key}
       GEMINI_DEFAULT_MODEL: ${GEMINI_DEFAULT_MODEL:-gemini-2.5-flash}
       GEMINI_LIVE_MODEL: ${GEMINI_LIVE_MODEL:-}
@@ -55,6 +69,8 @@ services:
 
 volumes:
   pgdata_prod:
+    driver: local
+  ollama_data:
     driver: local
 
 networks:
