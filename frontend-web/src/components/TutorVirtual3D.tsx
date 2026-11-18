@@ -3,12 +3,32 @@
 // Tutor conversacional "Sky". El docente se renderiza con TutorAvatar3D (WebGL):
 // la postura y los visemas provienen de la pista que genera el backend con IA.
 import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
-import { Bot, Send, Volume2, VolumeX, Sparkles, ArrowRight, MessageSquare } from 'lucide-react';
+import { Bot, Send, Volume2, VolumeX, Sparkles, ArrowRight, MessageSquare, Mic, MicOff, AlertCircle } from 'lucide-react';
 import { useLiveTutor } from '../hooks/useLiveTutor';
 import { useTutorSpeech } from '../hooks/useTutorSpeech';
 import { TutorSpeechControls } from './TutorSpeechControls';
 import { api } from '../services/api';
 import type { AvatarPoseType, VisemeFrame, VisemeShape } from '../types/tutor.types';
+
+interface RecognitionResultEvent {
+  results: ArrayLike<{ isFinal: boolean; 0: { transcript: string } }>;
+}
+interface RecognitionEngine {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  onstart: (() => void) | null;
+  onresult: ((event: RecognitionResultEvent) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+  start(): void;
+  stop(): void;
+  abort(): void;
+}
+type RecognitionWindow = Window & {
+  SpeechRecognition?: new () => RecognitionEngine;
+  webkitSpeechRecognition?: new () => RecognitionEngine;
+};
 
 const TutorAvatar3D = lazy(() => import('./TutorAvatar'));
 
@@ -47,8 +67,11 @@ export const TutorVirtual3D: React.FC<TutorVirtual3DProps> = ({
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [redirectAction, setRedirectAction] = useState<{ label: string; url: string } | null>(null);
+  const [isListening, setIsListening] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
 
   const timersRef = useRef<number[]>([]);
+  const recognitionRef = useRef<RecognitionEngine | null>(null);
 
   const clearTimers = useCallback(() => {
     timersRef.current.forEach((timer) => clearTimeout(timer));
@@ -58,6 +81,11 @@ export const TutorVirtual3D: React.FC<TutorVirtual3DProps> = ({
   useEffect(() => {
     return () => {
       clearTimers();
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch {}
+      }
       if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel();
       }
@@ -66,7 +94,87 @@ export const TutorVirtual3D: React.FC<TutorVirtual3DProps> = ({
 
   const speech = useTutorSpeech();
   const live = useLiveTutor(lessonId, speech.gender);
-  useEffect(() => { setIsSpeaking(speech.speaking); setCurrentViseme(speech.viseme); setPose(speech.speaking ? 'explaining' : 'idle'); }, [speech.speaking, speech.viseme]);
+  useEffect(() => {
+    setIsSpeaking(speech.speaking);
+    setCurrentViseme(speech.viseme);
+    if (!isListening) {
+      setPose(speech.speaking ? 'explaining' : 'idle');
+    }
+  }, [speech.speaking, speech.viseme, isListening]);
+
+  const toggleSpeechRecognition = () => {
+    const SpeechRecognition =
+      (window as RecognitionWindow).SpeechRecognition ||
+      (window as RecognitionWindow).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      setVoiceError('Tu navegador no soporta reconocimiento de voz. Puedes escribir tu duda.');
+      setTimeout(() => setVoiceError(null), 4000);
+      return;
+    }
+
+    if (isListening) {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch {}
+      }
+      setIsListening(false);
+      setPose('idle');
+      return;
+    }
+
+    try {
+      speech.stop();
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+      }
+      setVoiceError(null);
+      let finalTranscript = '';
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'es-ES';
+      recognition.interimResults = true;
+      recognition.continuous = false;
+
+      recognition.onstart = () => {
+        setIsListening(true);
+        setPose('listening');
+      };
+
+      recognition.onresult = (event: RecognitionResultEvent) => {
+        let transcript = '';
+        for (let i = 0; i < event.results.length; ++i) {
+          transcript += event.results[i][0].transcript;
+        }
+        if (event.results[event.results.length - 1].isFinal) {
+          finalTranscript = transcript;
+        }
+        setInputText(transcript);
+      };
+
+      recognition.onerror = () => {
+        setVoiceError('No pudimos escuchar tu micrófono. Revisa los permisos de audio.');
+        setTimeout(() => setVoiceError(null), 4000);
+        setIsListening(false);
+        setPose('idle');
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+        setPose('idle');
+        if (finalTranscript.trim()) {
+          void handleSendMessage(finalTranscript.trim());
+        }
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (err) {
+      console.error('Error al iniciar reconocimiento de voz:', err);
+      setIsListening(false);
+      setPose('idle');
+    }
+  };
   const speak = (text: string, _visemes: VisemeFrame[]) => { if (soundEnabled) void speech.speak(text); };
   const handleSendMessage = async (customText?: string) => {
     const textToSend = customText ?? inputText;
@@ -123,9 +231,11 @@ export const TutorVirtual3D: React.FC<TutorVirtual3DProps> = ({
 
   const statusLabel = isSpeaking
     ? 'Sky está explicando'
-    : loading
-      ? 'Sky está pensando'
-      : 'Sky está disponible';
+    : isListening
+      ? 'Sky te está escuchando…'
+      : loading
+        ? 'Sky está pensando'
+        : 'Sky está disponible';
 
   return (
     <div className="skylearn-card" style={styles.container}>
@@ -137,7 +247,14 @@ export const TutorVirtual3D: React.FC<TutorVirtual3DProps> = ({
         <div style={styles.headerActions}>
           <span style={styles.statusPill}>
             <span
-              style={{ ...styles.statusDot, backgroundColor: isSpeaking ? 'var(--color-sky)' : 'var(--color-leaf)' }}
+              style={{
+                ...styles.statusDot,
+                backgroundColor: isSpeaking
+                  ? 'var(--color-sky)'
+                  : isListening
+                    ? '#EF4444'
+                    : 'var(--color-leaf)',
+              }}
             />
             <span style={styles.statusText}>{statusLabel}</span>
           </span>
@@ -245,11 +362,22 @@ export const TutorVirtual3D: React.FC<TutorVirtual3DProps> = ({
         </button>
       </div>
 
+      {voiceError && (
+        <div style={styles.voiceErrorAlert} role="alert">
+          <AlertCircle size={16} color="#DC2626" aria-hidden="true" />
+          <span>{voiceError}</span>
+        </div>
+      )}
+
       <div style={styles.inputRow} aria-disabled={live.active}>
         <input
           type="text"
           className="skylearn-input"
-          placeholder="Escribe tu duda o pregunta a Sky…"
+          placeholder={
+            isListening
+              ? 'Escuchando tu voz… habla ahora'
+              : 'Escribe tu duda o presiona el micrófono para hablar con Sky…'
+          }
           value={inputText}
           onChange={(event) => setInputText(event.target.value)}
           onKeyDown={(event) => {
@@ -259,6 +387,23 @@ export const TutorVirtual3D: React.FC<TutorVirtual3DProps> = ({
           aria-label="Escribe tu pregunta al docente virtual"
           style={{ flex: 1 }}
         />
+        <button
+          type="button"
+          onClick={toggleSpeechRecognition}
+          disabled={loading || live.active}
+          style={{
+            ...styles.micButton,
+            ...(isListening ? styles.micButtonActive : {}),
+          }}
+          aria-label={isListening ? 'Detener micrófono' : 'Hablar por micrófono con Sky'}
+          title={isListening ? 'Detener escucha' : 'Hablar por micrófono con Sky'}
+        >
+          {isListening ? (
+            <MicOff size={22} color="#FFFFFF" aria-hidden="true" />
+          ) : (
+            <Mic size={22} color="var(--color-sky-deep)" aria-hidden="true" />
+          )}
+        </button>
         <button
           type="button"
           className="btn-big-friendly"
@@ -443,6 +588,37 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     gap: '12px',
+  },
+  voiceErrorAlert: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '10px 14px',
+    borderRadius: '12px',
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    border: '1px solid rgba(239, 68, 68, 0.3)',
+    color: 'var(--color-ink)',
+    fontSize: '14px',
+  },
+  micButton: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '56px',
+    height: '56px',
+    padding: 0,
+    flexShrink: 0,
+    borderRadius: '16px',
+    border: '1px solid var(--color-outline)',
+    backgroundColor: 'var(--color-surface)',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+  },
+  micButtonActive: {
+    backgroundColor: '#EF4444',
+    borderColor: '#DC2626',
+    color: '#FFFFFF',
+    boxShadow: '0 0 16px rgba(239, 68, 68, 0.45)',
   },
   sendButton: {
     display: 'inline-flex',
