@@ -66,8 +66,12 @@ describe('Vertical Slice 2: Catálogo Curricular & Lecciones (BDD E2E)', () => {
         coursesDb.set(course.id, course);
         return Promise.resolve(course);
       }),
-      findMany: jest.fn().mockImplementation(() => {
-        return Promise.resolve(Array.from(coursesDb.values()));
+      findMany: jest.fn().mockImplementation((args?: any) => {
+        let all = Array.from(coursesDb.values());
+        if (args?.where?.teacherId) {
+          all = all.filter((c) => c.teacherId === args.where.teacherId);
+        }
+        return Promise.resolve(all);
       }),
       findUnique: jest.fn().mockImplementation(({ where }) => {
         return Promise.resolve(coursesDb.get(where.id) || null);

@@ -1,6 +1,6 @@
 // backend/src/modules/courses/courses.controller.ts
-import { Controller, Post, Get, Put, Patch, Delete, Body, Param, UseGuards, Request, ParseUUIDPipe } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { Controller, Post, Get, Put, Patch, Delete, Body, Param, Query, UseGuards, Request, ParseUUIDPipe } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { CoursesService } from './courses.service';
 import { CreateCourseDto } from './dto/create-course.dto';
 import { UpdateCourseDto } from './dto/update-course.dto';
@@ -27,10 +27,11 @@ export class CoursesController {
 
   @Get()
   @UseGuards(OptionalJwtAuthGuard)
-  @ApiOperation({ summary: 'Listar todos los cursos disponibles en la plataforma' })
-  async findAll(@Request() req: any) {
+  @ApiOperation({ summary: 'Listar cursos disponibles (soporta filtro opcional ?teacherId=...)' })
+  @ApiQuery({ name: 'teacherId', required: false, description: 'Filtrar por ID del docente creador' })
+  async findAll(@Request() req: any, @Query('teacherId') teacherId?: string) {
     const userId = req.user?.id;
-    return this.coursesService.findAll(userId);
+    return this.coursesService.findAll(userId, teacherId);
   }
 
   @Get(':id')

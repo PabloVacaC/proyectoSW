@@ -68,10 +68,17 @@ export const LiveMeetingModal: React.FC<LiveMeetingModalProps> = ({
   useEffect(() => {
     const fetchCourses = async () => {
       try {
-        const res = await api.get('/courses');
-        setCourses(res.data.map((c: any) => ({ id: c.id, title: c.title })));
-        if (!selectedCourseId && res.data.length > 0) {
-          setSelectedCourseId(res.data[0].id);
+        const savedUser = localStorage.getItem('user_data');
+        const userObj = savedUser ? JSON.parse(savedUser) : null;
+        const teacherId = userObj?.id;
+        const url = teacherId ? `/courses?teacherId=${teacherId}` : '/courses';
+        const res = await api.get(url);
+        const myCourses = teacherId
+          ? res.data.filter((c: any) => !c.teacherId || c.teacherId === teacherId)
+          : res.data;
+        setCourses(myCourses.map((c: any) => ({ id: c.id, title: c.title })));
+        if (!selectedCourseId && myCourses.length > 0) {
+          setSelectedCourseId(myCourses[0].id);
         }
       } catch (err) {
         console.error('Error cargando cursos para la reunión', err);

@@ -63,8 +63,14 @@ export class CoursesService {
     return course;
   }
 
-  async findAll(userId?: string) {
+  async findAll(userId?: string, teacherId?: string) {
+    const where: any = {};
+    if (teacherId) {
+      where.teacherId = teacherId;
+    }
+
     const courses = await this.prisma.course.findMany({
+      where,
       include: {
         category: true,
         teacher: { select: { id: true, name: true } },
@@ -90,6 +96,7 @@ export class CoursesService {
         status: course.status,
         category: course.category?.name || 'General',
         teacherName: course.teacher?.name || 'Profesor Docente',
+        teacherId: course.teacherId,
         modulesCount: course.modules?.length || 0,
         isEnrolled: !!isEnrolled,
         isDimmed: course.status === CourseStatus.ARCHIVED && isEnrolled,

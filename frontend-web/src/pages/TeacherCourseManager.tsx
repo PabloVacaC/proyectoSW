@@ -27,6 +27,8 @@ interface CourseItem {
   category: string;
   status: string;
   modulesCount: number;
+  teacherId?: string;
+  teacherName?: string;
 }
 
 interface TeacherCourseManagerProps {
@@ -38,7 +40,7 @@ interface TeacherCourseManagerProps {
 }
 
 export function TeacherCourseManager({
-  user: _user,
+  user,
   selectedCourseId,
   onNavigateToCourse,
   onBackToCourseList,
@@ -105,7 +107,7 @@ export function TeacherCourseManager({
 
   useEffect(() => {
     loadCourses();
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     if (selectedCourseId) {
@@ -118,8 +120,13 @@ export function TeacherCourseManager({
   const loadCourses = async () => {
     setIsLoading(true);
     try {
-      const res = await api.get('/courses');
-      setCourses(res.data);
+      const teacherId = user?.id;
+      const url = teacherId ? `/courses?teacherId=${teacherId}` : '/courses';
+      const res = await api.get(url);
+      const myCourses = teacherId
+        ? res.data.filter((c: any) => c.teacherId === teacherId)
+        : res.data;
+      setCourses(myCourses);
     } catch (err) {
       console.error('Error cargando módulos del docente:', err);
     } finally {
@@ -569,10 +576,10 @@ export function TeacherCourseManager({
             <div className="skylearn-card" style={styles.emptyCard}>
               <FolderPlus size={44} color="var(--color-sky)" style={{ opacity: 0.8 }} />
               <h3 style={{ fontSize: '18px', fontWeight: 800, margin: '8px 0 6px 0' }}>
-                Aún no hay cursos
+                Aún no has creado cursos
               </h3>
               <p style={{ color: 'var(--color-ink-muted)', maxWidth: '420px', margin: '0 0 16px 0', fontSize: '13px' }}>
-                Crea un curso para añadir lecciones con videos y evaluaciones.
+                Crea tu primer curso para añadir lecciones con videos interactivos y evaluaciones.
               </p>
               <button
                 className="btn-big-friendly"
