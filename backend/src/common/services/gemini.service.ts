@@ -20,8 +20,6 @@ export class GeminiService implements OnModuleInit {
   // Cascada de modelos vigentes para Google Gemini (Nube)
   private readonly fallbackModels = [
     'gemini-3-flash-preview',
-    'gemini-3.8-flash',
-    'gemini-flash-latest',
   ];
 
   constructor(private readonly configService: ConfigService) {
@@ -238,7 +236,7 @@ export class GeminiService implements OnModuleInit {
           });
 
           const response = await model.generateContent(prompt, {
-            timeout: Math.min(remaining, 7000),
+            timeout: Math.min(remaining, 3500),
           });
           const text = response.response.text();
 
@@ -291,7 +289,7 @@ export class GeminiService implements OnModuleInit {
           });
 
           const response = await model.generateContent(prompt, {
-            timeout: Math.min(remaining, 7000),
+            timeout: Math.min(remaining, 3500),
           });
           this.lastUsedProvider = 'Google Gemini (Nube)';
           this.lastUsedModel = modelName;

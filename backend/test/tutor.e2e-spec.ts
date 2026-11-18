@@ -4,6 +4,7 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/common/prisma/prisma.service';
+import { GeminiService } from '../src/common/services/gemini.service';
 import { GlobalHttpExceptionFilter } from '../src/common/filters/http-exception.filter';
 import { Role } from '@prisma/client';
 import { JwtService } from '@nestjs/jwt';
@@ -39,6 +40,8 @@ describe('Módulo 02: Evaluación con Docente Virtual Humanoide & Google Gemini 
 
   const attemptsDb: any[] = [];
   const modularExamId = 'e0000000-0000-4000-8000-000000000001';
+  let currentSessionIndex = 0;
+  let sessionResults: boolean[] = [];
 
   const mockPrisma = {
     module: {
@@ -104,6 +107,40 @@ describe('Módulo 02: Evaluación con Docente Virtual Humanoide & Google Gemini 
         credits: 0, // Invariante: 0 créditos para verificar que no requiere saldo
       }),
     },
+    tutorSession: {
+      create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: '00000000-0000-4000-8000-000000000099', ...data, nextIndex: 0, results: [], completed: false })),
+      findUnique: jest.fn().mockImplementation(({ where }) => Promise.resolve({
+        id: where.id,
+        userId: studentId,
+        moduleId,
+        nextIndex: currentSessionIndex,
+        results: sessionResults,
+        question: 'Pregunta',
+        completed: false,
+      })),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
+    $transaction: jest.fn().mockImplementation(async (cb) => cb({
+      tutorSession: { updateMany: jest.fn().mockResolvedValue({ count: 1 }), update: jest.fn().mockResolvedValue({}) },
+      exam: mockPrisma.exam,
+      examAttempt: mockPrisma.examAttempt,
+    })),
+  };
+
+  const mockGeminiService = {
+    generateJson: jest.fn().mockImplementation((prompt, fallbackFn) => Promise.resolve({
+      phrase: '¡Hola! Estoy listo para evaluar tus temas del curso en vivo con inteligencia artificial de Google.',
+      isCorrect: true,
+      feedbackText: '¡Excelente razonamiento sobre las variables!',
+      avatarEmotion: 'celebrating',
+      speechSegments: [],
+      replyText: '¡Excelente pregunta! Recuerda los conceptos fundamentales.',
+      shouldRedirect: false,
+      recommendationReason: 'Refuerzo de conceptos clave',
+    })),
+    generateText: jest.fn().mockResolvedValue('¡Hola! Soy Sky, tu docente virtual.'),
+    getLastUsedProvider: () => 'Google Gemini',
+    getLastUsedModel: () => 'gemini-3-flash-preview',
   };
 
   beforeAll(async () => {
@@ -112,6 +149,8 @@ describe('Módulo 02: Evaluación con Docente Virtual Humanoide & Google Gemini 
     })
       .overrideProvider(PrismaService)
       .useValue(mockPrisma)
+      .overrideProvider(GeminiService)
+      .useValue(mockGeminiService)
       .compile();
 
     app = moduleRef.createNestApplication();
@@ -180,10 +219,13 @@ describe('Módulo 02: Evaluación con Docente Virtual Humanoide & Google Gemini 
 
   // HU-03 & SC-02.1 & SC-03.1
   it('SC-03.1: POST /tutor/module-evaluation/answer debe evaluar Lección 1, retroalimentar con postura y entregar pregunta de Lección 2 (Fail-Fast: 5s)', async () => {
+    currentSessionIndex = 0;
+    sessionResults = [];
     const res = await request(app.getHttpServer())
       .post('/tutor/module-evaluation/answer')
       .set('Authorization', `Bearer ${studentToken}`)
       .send({
+        sessionId: '00000000-0000-4000-8000-000000000099',
         moduleId,
         lessonIndex: 0,
         userResponse: 'Una variable es un espacio reservado en memoria para guardar un valor que puede cambiar.',
@@ -200,12 +242,15 @@ describe('Módulo 02: Evaluación con Docente Virtual Humanoide & Google Gemini 
 
   // HU-03 & SC-03.1
   it('SC-03.1: POST /tutor/module-evaluation/answer en última lección debe persistir ExamAttempt y dictamen final (Fail-Fast: 5s)', async () => {
+    currentSessionIndex = 1;
+    sessionResults = [true];
     const initialAttemptsCount = attemptsDb.length;
 
     const res = await request(app.getHttpServer())
       .post('/tutor/module-evaluation/answer')
       .set('Authorization', `Bearer ${studentToken}`)
       .send({
+        sessionId: '00000000-0000-4000-8000-000000000099',
         moduleId,
         lessonIndex: 1,
         userResponse: 'Los bucles for y while nos permiten repetir instrucciones mientras se cumpla una condición.',

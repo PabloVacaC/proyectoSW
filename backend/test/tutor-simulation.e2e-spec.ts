@@ -4,6 +4,7 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/common/prisma/prisma.service';
+import { GeminiService } from '../src/common/services/gemini.service';
 import { GlobalHttpExceptionFilter } from '../src/common/filters/http-exception.filter';
 import { Role } from '@prisma/client';
 import { JwtService } from '@nestjs/jwt';
@@ -90,6 +91,36 @@ describe('Slice 1 BDD: Modo Simulación del Tutor Virtual e Inmunidad Analítica
         });
       }),
     },
+    tutorSession: {
+      create: jest.fn().mockImplementation(({ data }) => Promise.resolve({ id: '00000000-0000-4000-8000-000000000001', ...data, nextIndex: 0, results: [], completed: false })),
+      findUnique: jest.fn().mockImplementation(({ where }) => Promise.resolve({
+        id: where.id,
+        userId: where.id === '00000000-0000-4000-8000-000000000001' ? teacherId : studentId,
+        moduleId,
+        nextIndex: 0,
+        results: [],
+        question: 'Pregunta',
+        completed: false,
+      })),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
+    $transaction: jest.fn().mockImplementation(async (cb) => cb({
+      tutorSession: { updateMany: jest.fn().mockResolvedValue({ count: 1 }), update: jest.fn().mockResolvedValue({}) },
+      exam: mockPrisma.exam,
+      examAttempt: mockPrisma.examAttempt,
+    })),
+  };
+
+  const mockGeminiService = {
+    generateJson: jest.fn().mockResolvedValue({
+      isCorrect: true,
+      feedbackText: 'Excelente respuesta analítica.',
+      avatarEmotion: 'celebrating',
+      speechSegments: [],
+    }),
+    generateText: jest.fn().mockResolvedValue('Respuesta textual mock.'),
+    getLastUsedProvider: () => 'Google Gemini (Mock)',
+    getLastUsedModel: () => 'gemini-3-flash-preview',
   };
 
   beforeAll(async () => {
@@ -98,6 +129,8 @@ describe('Slice 1 BDD: Modo Simulación del Tutor Virtual e Inmunidad Analítica
     })
       .overrideProvider(PrismaService)
       .useValue(mockPrisma)
+      .overrideProvider(GeminiService)
+      .useValue(mockGeminiService)
       .compile();
 
     app = moduleRef.createNestApplication();
@@ -135,6 +168,7 @@ describe('Slice 1 BDD: Modo Simulación del Tutor Virtual e Inmunidad Analítica
       .post('/api/v1/tutor/module-evaluation/answer')
       .set('Authorization', `Bearer ${teacherToken}`)
       .send({
+        sessionId: '00000000-0000-4000-8000-000000000001',
         moduleId,
         lessonIndex: 0,
         userResponse: 'Un algoritmo es un conjunto de pasos ordenados y finitos para resolver un problema.',
@@ -159,6 +193,7 @@ describe('Slice 1 BDD: Modo Simulación del Tutor Virtual e Inmunidad Analítica
       .post('/api/v1/tutor/module-evaluation/answer')
       .set('Authorization', `Bearer ${studentToken}`)
       .send({
+        sessionId: '00000000-0000-4000-8000-000000000002',
         moduleId,
         lessonIndex: 0,
         userResponse: 'Los algoritmos ordenan instrucciones para procesar datos eficientemente.',

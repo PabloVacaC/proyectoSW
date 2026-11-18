@@ -78,7 +78,11 @@ export const TutorVirtual3D: React.FC<TutorVirtual3DProps> = ({
     setLoading(true);
 
     try {
-      const res = await api.post('/tutor/chat', { lessonId, message: userMsg });
+      const payload: { message: string; lessonId?: string } = { message: userMsg };
+      if (lessonId && lessonId !== 'general-tutoring') {
+        payload.lessonId = lessonId;
+      }
+      const res = await api.post('/tutor/chat', payload);
       const tutorReply: string = res.data.replyText;
       const visemes: VisemeFrame[] = res.data.visemes ?? [];
 
@@ -87,7 +91,8 @@ export const TutorVirtual3D: React.FC<TutorVirtual3DProps> = ({
         setRedirectAction(res.data.redirectRecommendation);
       }
       speak(tutorReply, visemes);
-    } catch {
+    } catch (err) {
+      console.error('Error al conectar con el tutor virtual:', err);
       const fallbackReply =
         'No pude conectar con la tutoría en este momento. Mientras tanto, revisa el video y prueba el formulario evaluativo de la lección.';
       setMessages((prev) => [...prev, { sender: 'tutor', text: fallbackReply }]);

@@ -1,9 +1,10 @@
 // backend/src/modules/tutor/dto/chat-tutor.dto.ts
-import { IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class ChatTutorDto {
-  @IsUUID('4')
-  lessonId: string;
+  @IsOptional()
+  @IsString()
+  lessonId?: string;
 
   @IsString()
   @IsNotEmpty()

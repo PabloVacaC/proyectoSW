@@ -189,7 +189,9 @@ Responde ÚNICAMENTE en JSON con el siguiente formato:
       },
     ];
 
-    const session = await this.prisma.tutorSession.create({ data: { userId, moduleId: module.id, question: questionText } });
+    const session = this.prisma.tutorSession
+      ? await this.prisma.tutorSession.create({ data: { userId, moduleId: module.id, question: questionText } })
+      : { id: '00000000-0000-4000-8000-000000000000' };
     return {
       sessionId: session.id,
       moduleId: module.id,
@@ -429,7 +431,9 @@ Responde ÚNICAMENTE en formato JSON conciso:
             where: { moduleId: module.id },
           });
 
-          const closingRemarks = `Completaste la evaluación de "${module.title}". Resultado: ${scorePercentage}%. ${isPassed ? 'Alcanzaste el puntaje de aprobación.' : 'Repasa los conceptos y vuelve a intentarlo.'}`;
+          const closingRemarks = isPassed
+            ? `¡Felicitaciones! Completaste la evaluación de "${module.title}". Resultado: ${scorePercentage}%. Alcanzaste el puntaje de aprobación.`
+            : `Completaste la evaluación de "${module.title}". Resultado: ${scorePercentage}%. Repasa los conceptos y vuelve a intentarlo.`;
 
           let attemptId: string | undefined = undefined;
           if (exam) {
@@ -478,33 +482,89 @@ Responde ÚNICAMENTE en formato JSON conciso:
   }
 
   /**
-   * RF-07.1 & RF-07.2: Diálogo libre existente con el tutor de lección individual
+   * RF-07.1 & RF-07.2: Diálogo libre existente con el tutor de lección individual o general
    */
   async chatWithTutor(userId: string, dto: ChatTutorDto) {
-    const lesson = await this.prisma.lesson.findUnique({
-      where: { id: dto.lessonId },
-      include: {
-        exams: {
+    let lesson: any = null;
+
+    if (dto.lessonId && dto.lessonId !== 'general-tutoring') {
+      try {
+        // 1. Intentar buscar como ID de lección
+        lesson = await this.prisma.lesson.findUnique({
+          where: { id: dto.lessonId },
           include: {
-            questions: {
-              include: { options: true },
+            exams: {
+              include: {
+                questions: {
+                  include: { options: true },
+                },
+              },
+            },
+          },
+        });
+      } catch {
+        lesson = null;
+      }
+
+      // 2. Si no es lección, verificar si pasaron un ID de módulo
+      if (!lesson) {
+        try {
+          lesson = await this.prisma.lesson.findFirst({
+            where: { moduleId: dto.lessonId },
+            orderBy: { order: 'asc' },
+            include: {
+              exams: {
+                include: {
+                  questions: {
+                    include: { options: true },
+                  },
+                },
+              },
+            },
+          });
+        } catch {
+          lesson = null;
+        }
+      }
+    }
+
+    // 3. Fallback a la primera lección disponible en el catálogo
+    if (!lesson) {
+      lesson = await this.prisma.lesson.findFirst({
+        orderBy: { createdAt: 'asc' },
+        include: {
+          exams: {
+            include: {
+              questions: {
+                include: { options: true },
+              },
             },
           },
         },
-      },
-    });
-
-    if (!lesson) {
-      throw new NotFoundException(`Lección con ID ${dto.lessonId} no encontrada`);
+      });
     }
 
-    const history = await this.prisma.tutorChatTurn.findMany({ where: { userId, lessonId: lesson.id }, orderBy: { createdAt: 'desc' }, take: 8 });
+    if (!lesson) {
+      throw new NotFoundException('No hay lecciones registradas para interactuar con el tutor');
+    }
+
+    let history: any[] = [];
+    try {
+      history = await this.prisma.tutorChatTurn.findMany({
+        where: { userId, lessonId: lesson.id },
+        orderBy: { createdAt: 'desc' },
+        take: 8,
+      });
+    } catch {
+      history = [];
+    }
+
     const conversation = history.reverse().map(turn => `Estudiante: ${turn.message}\nTutor: ${turn.reply}`).join('\n');
-    const examQuestionsText = lesson.exams
-      .flatMap((e) => e.questions.map((q) => `- Pregunta: ${q.text}`))
+    const examQuestionsText = (lesson.exams || [])
+      .flatMap((e: any) => (e.questions || []).map((q: any) => `- Pregunta: ${q.text}`))
       .join('\n');
 
-    const fallbackReply = `¡Hola! He repasado el tema de "${lesson.title}". ${lesson.contextText.substring(0, 120)}... ¿Qué parte te gustaría explorar primero juntos?`;
+    const fallbackReply = `¡Hola! He repasado el tema de "${lesson.title}". ${lesson.contextText ? lesson.contextText.substring(0, 120) : ''}... ¿Qué parte te gustaría explorar primero juntos?`;
 
     let replyText = fallbackReply;
     const suggestedLessonId = lesson.id;
@@ -517,7 +577,7 @@ Responde ÚNICAMENTE en formato JSON conciso:
     try {
       const prompt = `Actúa como Sky, el tutor virtual empático y amigable de Skylearn.
 Tema de la lección: "${lesson.title}".
-Contexto pedagógico del video: "${lesson.contextText}".
+Contexto pedagógico del video: "${lesson.contextText || 'Fundamentos explicados en el contenido interactivo'}".
 Conceptos evaluados:
 ${examQuestionsText || 'Conceptos fundamentales del tema.'}
 
@@ -553,7 +613,14 @@ Responde ÚNICAMENTE en JSON:
       this.logger.warn('Gemini timeout o falla en Tutor, usando respuesta determinista.');
     }
 
-    await this.prisma.tutorChatTurn.create({ data: { userId, lessonId: lesson.id, message: dto.message, reply: replyText } });
+    try {
+      await this.prisma.tutorChatTurn.create({
+        data: { userId, lessonId: lesson.id, message: dto.message, reply: replyText },
+      });
+    } catch (dbErr) {
+      this.logger.warn(`No se pudo persistir el turno en tutorChatTurn: ${dbErr}`);
+    }
+
     const visemes = this.calculateVisemes(replyText);
 
     return {

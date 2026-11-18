@@ -18,6 +18,8 @@ export const VirtualTutorSectionPage: React.FC<VirtualTutorSectionPageProps> = (
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
   const [selectedModuleId, setSelectedModuleId] = useState<string | null>(null);
   const [selectedModuleTitle, setSelectedModuleTitle] = useState<string>('');
+  const [selectedLessonId, setSelectedLessonId] = useState<string | null>(null);
+  const [selectedLessonTitle, setSelectedLessonTitle] = useState<string>('');
   const [showEvaluatorModal, setShowEvaluatorModal] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<'chat' | 'evaluation'>('chat');
   const [loading, setLoading] = useState<boolean>(true);
@@ -47,11 +49,21 @@ export const VirtualTutorSectionPage: React.FC<VirtualTutorSectionPageProps> = (
     try {
       const res = await api.get(`/courses/${courseId}`);
       if (res.data?.modules && res.data.modules.length > 0) {
-        setSelectedModuleId(res.data.modules[0].id);
-        setSelectedModuleTitle(res.data.modules[0].title);
+        const firstModule = res.data.modules[0];
+        setSelectedModuleId(firstModule.id);
+        setSelectedModuleTitle(firstModule.title);
+        if (firstModule.lessons && firstModule.lessons.length > 0) {
+          setSelectedLessonId(firstModule.lessons[0].id);
+          setSelectedLessonTitle(firstModule.lessons[0].title);
+        } else {
+          setSelectedLessonId(null);
+          setSelectedLessonTitle('');
+        }
       } else {
         setSelectedModuleId(null);
         setSelectedModuleTitle('');
+        setSelectedLessonId(null);
+        setSelectedLessonTitle('');
       }
     } catch (err) {
       console.error('Error cargando módulos:', err);
@@ -119,8 +131,8 @@ export const VirtualTutorSectionPage: React.FC<VirtualTutorSectionPageProps> = (
       {activeTab === 'chat' ? (
         <div style={styles.chatSection}>
           <TutorVirtual3D
-            lessonId={selectedModuleId || 'general-tutoring'}
-            lessonTitle={selectedModuleTitle || 'Tutoría General de Aprendizaje'}
+            lessonId={selectedLessonId || selectedModuleId || undefined}
+            lessonTitle={selectedLessonTitle || selectedModuleTitle || 'Tutoría General de Aprendizaje'}
             onNavigate={() => {}}
           />
         </div>
