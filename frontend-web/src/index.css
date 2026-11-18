@@ -1,0 +1,397 @@
+/* frontend-web/src/index.css - Skylearn Design System Tokens */
+:root {
+  /* Primary Palette */
+  --color-sky: #3B82F6;
+  --color-sky-bright: #60A5FA;
+  --color-sky-deep: #1D4ED8;
+  --color-sky-soft: #DBEAFE;
+
+  /* Feedback & Accent Palette */
+  --color-sun: #FBBF24;
+  --color-sun-bright: #FCD34D;
+  --color-sun-deep: #D97706;
+  --color-leaf: #22C55E;
+  --color-leaf-soft: #DCFCE7;
+  --color-leaf-deep: #16A34A;
+  --color-coral: #F87171;
+  --color-coral-soft: #FEE2E2;
+  --color-berry: #A855F7;
+
+  /* Surfaces & Neutrals (Light Mode) */
+  --color-bg: #FFFFFF;
+  --color-surface: #F8FAFC;
+  --color-surface-elevated: #FFFFFF;
+  --color-surface-sunken: #F1F5F9;
+
+  /* Typography & Lines */
+  --color-ink: #0F172A;
+  --color-ink-muted: #475569;
+  --color-ink-subtle: #94A3B8;
+  --color-ink-faint: #CBD5E1;
+  --color-outline: #E2E8F0;
+  --color-outline-strong: #94A3B8;
+  --course-accent: #1D4ED8;
+
+  /* Typography Families */
+  --font-display: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-body: 'Atkinson Hyperlegible', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  /* Radii */
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+  --radius-full: 9999px;
+
+  /* Shadows */
+  --shadow-card: 0 2px 10px rgba(15, 23, 42, 0.04);
+  --shadow-hover: 0 8px 20px rgba(15, 23, 42, 0.08);
+  --shadow-modal: 0 20px 40px rgba(15, 23, 42, 0.16);
+  --shadow-sky: 0 4px 14px rgba(59, 130, 246, 0.25);
+  --shadow-sun: 0 0 20px rgba(252, 211, 77, 0.35);
+
+  /* Futurist Palette Tokens (SPEC-001) */
+  --color-futuristic-bg: #060B19;
+  --color-futuristic-surface: rgba(13, 23, 48, 0.75);
+  --color-futuristic-border: rgba(0, 210, 255, 0.22);
+  --color-electric-blue: #00D2FF;
+  --color-neon-purple: #8A2BE2;
+  --color-neon-indigo: #6366F1;
+  --gradient-futuristic-hero: linear-gradient(135deg, #0A192F 0%, #060B19 50%, #150A2F 100%);
+  --gradient-electric: linear-gradient(90deg, #00D2FF 0%, #6366F1 50%, #A855F7 100%);
+  --gradient-card-glow: linear-gradient(135deg, rgba(0, 210, 255, 0.12) 0%, rgba(138, 43, 226, 0.08) 100%);
+}
+
+/* Modo Oscuro (Dark Theme) */
+[data-theme='dark'],
+.dark {
+  --color-bg: #0F172A;
+  --color-surface: #1E293B;
+  --color-surface-elevated: #1E293B;
+  --color-surface-sunken: #0B1120;
+
+  --color-ink: #F8FAFC;
+  --color-ink-muted: #94A3B8;
+  --color-ink-subtle: #64748B;
+  --color-ink-faint: #334155;
+  --color-outline: #334155;
+  --color-outline-strong: #475569;
+  --course-accent: #93C5FD;
+
+  --color-sky-soft: rgba(59, 130, 246, 0.18);
+  --color-leaf-soft: rgba(34, 197, 94, 0.18);
+  --color-coral-soft: rgba(248, 113, 113, 0.18);
+
+  --shadow-card: 0 4px 16px rgba(0, 0, 0, 0.3);
+  --shadow-hover: 0 10px 24px rgba(0, 0, 0, 0.45);
+  --shadow-modal: 0 24px 48px rgba(0, 0, 0, 0.6);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: var(--color-surface);
+  color: var(--color-ink);
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  font-weight: 800;
+  line-height: 1.25;
+  color: var(--color-ink);
+}
+
+button {
+  font-family: var(--font-body);
+  cursor: pointer;
+  border: none;
+  outline: none;
+}
+
+input, textarea, select {
+  font-family: var(--font-body);
+}
+
+/* Skylearn Component Utilities Ergonómicos y Adaptables */
+.skylearn-card {
+  background: var(--color-surface-elevated);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-outline);
+  box-shadow: var(--shadow-card);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.skylearn-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-hover);
+}
+
+/* Botón Principal: Ergonómico, no gigantesco */
+.btn-big-friendly {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 20px;
+  font-size: 15px;
+  font-weight: 700;
+  border-radius: var(--radius-full);
+  background-color: var(--color-sky);
+  color: #FFFFFF;
+  box-shadow: var(--shadow-sky);
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn-big-friendly:hover {
+  background-color: var(--color-sky-bright);
+  transform: translateY(-1px);
+}
+
+.btn-big-friendly:active {
+  background-color: var(--color-sky-deep);
+  transform: scale(0.98);
+}
+
+.btn-big-friendly:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Botón Secundario */
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background-color: var(--color-surface);
+  color: var(--color-ink);
+  border: 1px solid var(--color-outline);
+  padding: 8px 16px;
+  border-radius: var(--radius-full);
+  font-weight: 600;
+  font-size: 14px;
+  transition: all 0.18s ease;
+}
+
+.btn-secondary:hover {
+  background-color: var(--color-sky-soft);
+  color: var(--color-sky-deep);
+  border-color: var(--color-sky-bright);
+}
+
+.btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Botón Primario Estándar */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background-color: var(--color-sky);
+  color: #FFFFFF;
+  padding: 8px 16px;
+  border-radius: var(--radius-full);
+  font-weight: 700;
+  font-size: 14px;
+  transition: all 0.18s ease;
+  box-shadow: var(--shadow-sky);
+}
+
+.btn-primary:hover {
+  background-color: var(--color-sky-bright);
+}
+
+.btn-primary:active {
+  transform: scale(0.98);
+}
+
+/* Inputs Skylearn: Borde suave, foco con anillo sky y tamaño ergonómico */
+.skylearn-input {
+  width: 100%;
+  min-height: 42px;
+  padding: 10px 14px;
+  font-family: var(--font-body);
+  font-size: 15px;
+  color: var(--color-ink);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-outline);
+  border-radius: var(--radius-sm);
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+.skylearn-input::placeholder {
+  color: var(--color-ink-subtle);
+}
+
+.skylearn-input:focus {
+  border-color: var(--color-sky);
+  box-shadow: 0 0 0 3px var(--color-sky-soft);
+}
+
+.skylearn-input:disabled {
+  color: var(--color-ink-faint);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+/* Badge de Estrellas / Puntos */
+.star-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  background-color: #FEF3C7;
+  color: var(--color-sun-deep);
+  border-radius: var(--radius-full);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 13px;
+  border: 1px solid var(--color-sun);
+}
+
+/* Scrollbars accesibles y limpios */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-surface);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-outline-strong);
+  border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-ink-muted);
+}
+
+/* Ajustes Responsive para Pantallas Pequeñas (< 768px) */
+@media (max-width: 768px) {
+  .btn-big-friendly {
+    padding: 9px 16px;
+    font-size: 14px;
+    width: 100%;
+  }
+
+  .btn-secondary {
+    padding: 8px 14px;
+    font-size: 13px;
+  }
+
+  h1 {
+    font-size: 24px !important;
+  }
+
+  h2 {
+    font-size: 20px !important;
+  }
+
+  h3 {
+    font-size: 17px !important;
+  }
+}
+
+.tutor-speech-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px; color: var(--color-ink); background: var(--color-surface); border-bottom: 1px solid var(--color-outline); }
+.tutor-speech-controls label { display: flex; flex-direction: column; gap: 4px; font-size: 14px; min-width: 0; }
+.tutor-speech-controls select { max-width: 240px; padding: 8px; border-radius: 8px; border: 1px solid var(--color-outline); background: var(--color-surface-elevated); color: var(--color-ink); }
+.tutor-live-caption { width: 100%; line-height: 1.7; font-size: 16px; white-space: pre-wrap; }
+.tutor-current-word { background: var(--color-sky-soft); color: var(--color-ink); border-radius: 4px; text-decoration: underline; text-underline-offset: 4px; }
+.tutor-speech-controls :focus-visible { outline: 2px solid var(--color-sky-bright); outline-offset: 3px; }
+
+.tutor-live-caption { max-height: 160px; overflow-y: auto; }
+@media (max-width: 760px) {
+  .tutor-evaluation-grid { grid-template-columns: 1fr !important; overflow-y: auto !important; }
+  .tutor-evaluation-grid > div { overflow: visible !important; }
+}
+
+/* SPEC-001: Futuristic Glass & Electric Glow Utilities */
+.futuristic-hero {
+  background: var(--gradient-futuristic-hero);
+  position: relative;
+  overflow: hidden;
+  color: #F8FAFC;
+}
+
+.futuristic-glass {
+  background: rgba(13, 23, 48, 0.7);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(0, 210, 255, 0.2);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  transition: all 0.25s ease;
+}
+
+.futuristic-glass:hover {
+  border-color: rgba(0, 210, 255, 0.45);
+  box-shadow: 0 14px 40px rgba(0, 210, 255, 0.12);
+  transform: translateY(-3px);
+}
+
+.text-gradient-electric {
+  background: var(--gradient-electric);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  display: inline-block;
+}
+
+.btn-electric {
+  background: linear-gradient(135deg, #00D2FF 0%, #3B82F6 100%);
+  color: #060B19;
+  font-weight: 800;
+  border-radius: var(--radius-full);
+  padding: 10px 22px;
+  font-size: 15px;
+  box-shadow: 0 0 18px rgba(0, 210, 255, 0.4);
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+}
+
+.btn-electric:hover {
+  box-shadow: 0 0 26px rgba(0, 210, 255, 0.65);
+  transform: translateY(-2px);
+}
+
+.btn-ghost-futuristic {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #F8FAFC;
+  font-weight: 700;
+  border-radius: var(--radius-full);
+  padding: 10px 22px;
+  font-size: 15px;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+}
+
+.btn-ghost-futuristic:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: var(--color-electric-blue);
+  color: #FFFFFF;
+}
+
