@@ -18,7 +18,11 @@ export class GeminiService implements OnModuleInit {
   private readonly ollamaFallbackModel = 'llama3.2:latest';
 
   // Cascada de modelos vigentes para Google Gemini (Nube)
-  private readonly fallbackModels = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+  private readonly fallbackModels = [
+    'gemini-3-flash-preview',
+    'gemini-3.8-flash',
+    'gemini-flash-latest',
+  ];
 
   constructor(private readonly configService: ConfigService) {
     this.ollamaBaseUrl =
@@ -211,19 +215,13 @@ export class GeminiService implements OnModuleInit {
   }
 
   /**
-   * Genera contenido estructurado en JSON:
-   * 1. Prioridad: Ollama Local (100% offline y rápido)
-   * 2. Cascada: Google Gemini (Nube) si está configurado
-   * 3. Fallback: Generador determinista seguro
+   * Genera contenido estructurado en JSON (Arquitectura Híbrida Inteligente):
+   * 1. Prioridad: Google Gemini API (Nube ultrarrápida, sub-segundo)
+   * 2. Fallback Híbrido: Ollama Local (100% offline si falla la nube o se agota la cuota)
+   * 3. Fallback final: Generador determinista seguro
    */
   async generateJson<T>(prompt: string, fallbackGenerator: () => T): Promise<T> {
-    // 1. Intentar Ollama Local
-    const localResult = await this.tryOllamaJson<T>(prompt);
-    if (localResult !== null) {
-      return localResult;
-    }
-
-    // 2. Intentar Google Gemini en la nube
+    // 1. Prioridad: Intentar Google Gemini en la nube (Alta velocidad)
     if (this.genAI) {
       const deadline = Date.now() + 10000;
       for (const modelName of this.fallbackModels) {
@@ -240,7 +238,7 @@ export class GeminiService implements OnModuleInit {
           });
 
           const response = await model.generateContent(prompt, {
-            timeout: Math.min(remaining, 6000),
+            timeout: Math.min(remaining, 7000),
           });
           const text = response.response.text();
 
@@ -249,6 +247,7 @@ export class GeminiService implements OnModuleInit {
 
           this.lastUsedProvider = 'Google Gemini (Nube)';
           this.lastUsedModel = modelName;
+          this.logger.log(`Inferencia exitosa con Google Gemini [Modelo: ${modelName}]`);
           return parsed;
         } catch (error: any) {
           this.logger.warn(`Fallo en Gemini ${modelName}: ${error?.message || error}.`);
@@ -256,27 +255,28 @@ export class GeminiService implements OnModuleInit {
       }
     }
 
+    // 2. Fallback Híbrido: Ollama Local (100% Offline)
+    this.logger.log('Activando fallback híbrido a Ollama Local...');
+    const localResult = await this.tryOllamaJson<T>(prompt);
+    if (localResult !== null) {
+      return localResult;
+    }
+
     // 3. Fallback determinista
-    this.logger.warn('Tanto Ollama como Gemini no respondieron. Ejecutando fallback determinista.');
+    this.logger.warn('Tanto Google Gemini como Ollama no respondieron. Ejecutando fallback determinista.');
     this.lastUsedProvider = 'Sin conexión';
     this.lastUsedModel = 'Sin conexión';
     return fallbackGenerator();
   }
 
   /**
-   * Genera texto libre:
-   * 1. Prioridad: Ollama Local
-   * 2. Cascada: Google Gemini
-   * 3. Fallback: Generador determinista
+   * Genera texto libre (Arquitectura Híbrida Inteligente):
+   * 1. Prioridad: Google Gemini (Nube ultrarrápida)
+   * 2. Fallback Híbrido: Ollama Local
+   * 3. Fallback final: Generador determinista
    */
   async generateText(prompt: string, fallbackGenerator: () => string): Promise<string> {
-    // 1. Intentar Ollama Local
-    const localText = await this.tryOllamaText(prompt);
-    if (localText !== null && localText.length > 0) {
-      return localText;
-    }
-
-    // 2. Intentar Google Gemini en la nube
+    // 1. Prioridad: Intentar Google Gemini en la nube
     if (this.genAI) {
       const deadline = Date.now() + 10000;
       for (const modelName of this.fallbackModels) {
@@ -291,7 +291,7 @@ export class GeminiService implements OnModuleInit {
           });
 
           const response = await model.generateContent(prompt, {
-            timeout: Math.min(remaining, 6000),
+            timeout: Math.min(remaining, 7000),
           });
           this.lastUsedProvider = 'Google Gemini (Nube)';
           this.lastUsedModel = modelName;
@@ -300,6 +300,12 @@ export class GeminiService implements OnModuleInit {
           this.logger.warn(`Fallo en Gemini ${modelName} para generateText: ${error?.message || error}.`);
         }
       }
+    }
+
+    // 2. Fallback Híbrido: Ollama Local
+    const localText = await this.tryOllamaText(prompt);
+    if (localText !== null && localText.length > 0) {
+      return localText;
     }
 
     this.lastUsedProvider = 'Sin conexión';
