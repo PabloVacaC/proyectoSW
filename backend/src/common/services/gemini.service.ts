@@ -1,10 +1,10 @@
 // backend/src/common/services/gemini.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 @Injectable()
-export class GeminiService {
+export class GeminiService implements OnModuleInit {
   private readonly logger = new Logger(GeminiService.name);
   private genAI: GoogleGenerativeAI | null = null;
 
@@ -23,16 +23,68 @@ export class GeminiService {
   constructor(private readonly configService: ConfigService) {
     this.ollamaBaseUrl =
       this.configService.get<string>('OLLAMA_BASE_URL') || 'http://127.0.0.1:11434';
-    this.ollamaModel = this.configService.get<string>('OLLAMA_MODEL') || 'llama3.2';
+    this.ollamaModel = this.configService.get<string>('OLLAMA_MODEL') || 'qwen2.5-coder:1.5b';
 
     const apiKey = this.configService.get<string>('GEMINI_API_KEY');
-    if (apiKey && apiKey !== 'AIzaSyDemoKeyForDevelopmentMode2026') {
+    const isPlaceholderKey =
+      !apiKey ||
+      apiKey === 'AIzaSyDemoKeyForDevelopmentMode2026' ||
+      apiKey === 'AIzaSyTuClaveRealDeGeminiAqui' ||
+      apiKey === 'demo_key' ||
+      apiKey.includes('TuClaveReal');
+
+    if (!isPlaceholderKey) {
       this.genAI = new GoogleGenerativeAI(apiKey);
       this.logger.log('Google Gemini API inicializado.');
     } else {
       this.logger.log(
         'GEMINI_API_KEY no configurada o es demo. Se priorizará Ollama IA Local (100% Offline).',
       );
+    }
+  }
+
+  async onModuleInit() {
+    this.ensureOllamaModel();
+  }
+
+  /**
+   * Verifica la disponibilidad del modelo en Ollama y lo descarga automáticamente si no existe.
+   */
+  public async ensureOllamaModel(): Promise<void> {
+    try {
+      const res = await fetch(`${this.ollamaBaseUrl}/api/tags`);
+      if (res.ok) {
+        const data: any = await res.json();
+        const models = (data?.models || []).map((m: any) => m.name);
+        const targetModel = this.ollamaModel || 'qwen2.5-coder:1.5b';
+        const hasModel = models.some(
+          (m: string) => m === targetModel || m.startsWith(targetModel) || m.includes('qwen2.5-coder'),
+        );
+        if (!hasModel) {
+          this.logger.warn(
+            `Modelo "${targetModel}" no encontrado en Ollama. Iniciando descarga automática...`,
+          );
+          fetch(`${this.ollamaBaseUrl}/api/pull`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: targetModel, stream: false }),
+          })
+            .then(async (pullRes) => {
+              if (pullRes.ok) {
+                this.logger.log(`Modelo "${targetModel}" descargado exitosamente en Ollama.`);
+              } else {
+                this.logger.warn(`Respuesta al descargar modelo: ${await pullRes.text()}`);
+              }
+            })
+            .catch((err) => {
+              this.logger.debug(`Error descargando modelo en Ollama: ${err?.message || err}`);
+            });
+        } else {
+          this.logger.log(`Modelo local "${targetModel}" verificado y listo en Ollama.`);
+        }
+      }
+    } catch (err: any) {
+      this.logger.debug(`Ollama aún no está disponible para verificar tags: ${err?.message || err}`);
     }
   }
 
@@ -89,6 +141,11 @@ export class GeminiService {
             this.lastUsedModel = model;
             this.logger.log(`Inferencia exitosa con Ollama Local [Modelo: ${model}]`);
             return parsed;
+          }
+        } else {
+          this.logger.warn(`Ollama HTTP ${response.status} para modelo ${model}`);
+          if (response.status === 404) {
+            this.ensureOllamaModel();
           }
         }
       } catch (err: any) {
