@@ -245,3 +245,11 @@ El módulo analítico (`AnalyticsService`) procesa constantemente el rendimiento
 | **Ollama Local Daemon**| `11434` | `11434` (interno Docker) | API de inferencia de modelos IA |
 | **PostgreSQL** | `5432` | `5432` (interno Docker) | Motor relacional de base de datos |
 | **Google Generative AI**| Salida HTTPS | Salida HTTPS | Conexión cloud a `generativelanguage.googleapis.com` |
+
+
+
+
+
+kpi para el panel administrativo 
+reuniones programada por el docente para los alumnos 
+ comentarios en cada leeccion 

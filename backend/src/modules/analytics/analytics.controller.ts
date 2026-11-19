@@ -125,5 +125,27 @@ export class AnalyticsController {
   async unregisterToken(@Request() req: any, @Body() dto: RegisterDeviceDto) {
     return this.analyticsService.unregisterDeviceToken(req.user.id, dto.pushToken);
   }
+
+  @Get('teacher/courses/:id/academic-detail')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.TEACHER)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'SPEC-006: Detalle académico del curso con rendimiento por lección y temas difíciles',
+  })
+  async getTeacherCourseAcademicDetail(@Request() req: any, @Param('id') courseId: string) {
+    return this.analyticsService.getTeacherCourseAcademicDetail(req.user.id, courseId);
+  }
+
+  @Get('teacher/courses/:id/students')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.TEACHER)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'SPEC-006: Listado de estudiantes del curso con avance, evaluaciones y prioridad de apoyo',
+  })
+  async getTeacherCourseStudents(@Request() req: any, @Param('id') courseId: string) {
+    return this.analyticsService.getTeacherCourseStudents(req.user.id, courseId);
+  }
 }
 

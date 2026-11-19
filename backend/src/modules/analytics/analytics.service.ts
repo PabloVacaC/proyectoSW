@@ -793,5 +793,293 @@ export class AnalyticsService {
     }
     return { sent: true };
   }
+
+  /**
+   * SPEC-006: Detalle académico completo de un curso para el docente
+   */
+  async getTeacherCourseAcademicDetail(teacherId: string, courseId: string) {
+    const course = await this.prisma.course.findFirst({
+      where: { id: courseId, teacherId },
+      include: {
+        category: true,
+        enrollments: {
+          include: {
+            user: { select: { id: true, name: true, email: true } },
+          },
+        },
+        modules: {
+          orderBy: { order: 'asc' },
+          include: {
+            lessons: {
+              orderBy: { order: 'asc' },
+              include: {
+                exams: {
+                  include: {
+                    attempts: {
+                      include: {
+                        answers: {
+                          include: {
+                            question: true,
+                            selectedOption: true,
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!course) {
+      throw new NotFoundException('Curso no encontrado o no asignado a este docente.');
+    }
+
+    const totalEnrolled = course.enrollments.length;
+    const enrolledUserIds = new Set(course.enrollments.map((e) => e.userId));
+
+    // Desglose de lecciones
+    const lessonsList: any[] = [];
+    const questionStatsMap = new Map<
+      string,
+      { text: string; lessonTitle: string; totalAnswers: number; incorrectAnswers: number }
+    >();
+
+    let allCourseAttempts = 0;
+    let allCoursePassed = 0;
+    let totalScoreSum = 0;
+    const evaluatedStudentIds = new Set<string>();
+
+    for (const mod of course.modules) {
+      for (const lesson of mod.lessons) {
+        const exam = lesson.exams[0] || null;
+        if (!exam) {
+          lessonsList.push({
+            id: lesson.id,
+            title: lesson.title,
+            order: lesson.order,
+            hasExam: false,
+            examTitle: null,
+            totalAttempts: 0,
+            passedCount: 0,
+            failedCount: 0,
+            passRate: null,
+            difficulty: 'no-data',
+          });
+          continue;
+        }
+
+        const attempts = (exam.attempts || []).filter((a) => enrolledUserIds.has(a.userId));
+        const totalAttempts = attempts.length;
+        const passedCount = attempts.filter((a) => a.isPassed).length;
+        const failedCount = totalAttempts - passedCount;
+        const passRate = totalAttempts > 0 ? Math.round((passedCount / totalAttempts) * 100) : null;
+
+        allCourseAttempts += totalAttempts;
+        allCoursePassed += passedCount;
+        attempts.forEach((a) => {
+          totalScoreSum += a.score;
+          evaluatedStudentIds.add(a.userId);
+
+          // Analizar dificultad por pregunta
+          (a.answers || []).forEach((ans) => {
+            if (!ans.question) return;
+            const qId = ans.question.id;
+            const stat = questionStatsMap.get(qId) || {
+              text: ans.question.text,
+              lessonTitle: lesson.title,
+              totalAnswers: 0,
+              incorrectAnswers: 0,
+            };
+            stat.totalAnswers++;
+            if (!ans.selectedOption?.isCorrect) {
+              stat.incorrectAnswers++;
+            }
+            questionStatsMap.set(qId, stat);
+          });
+        });
+
+        let difficulty: 'high' | 'medium' | 'low' | 'no-data' = 'no-data';
+        if (totalAttempts > 0 && passRate !== null) {
+          if (passRate < 60) difficulty = 'high';
+          else if (passRate < 80) difficulty = 'medium';
+          else difficulty = 'low';
+        }
+
+        lessonsList.push({
+          id: lesson.id,
+          title: lesson.title,
+          order: lesson.order,
+          hasExam: true,
+          examTitle: exam.title,
+          totalAttempts,
+          passedCount,
+          failedCount,
+          passRate,
+          difficulty,
+        });
+      }
+    }
+
+    // Top 3 preguntas más difíciles
+    const difficultQuestions = Array.from(questionStatsMap.values())
+      .filter((q) => q.totalAnswers > 0)
+      .map((q) => ({
+        text: q.text,
+        lessonTitle: q.lessonTitle,
+        totalAnswers: q.totalAnswers,
+        incorrectAnswers: q.incorrectAnswers,
+        errorRate: Math.round((q.incorrectAnswers / q.totalAnswers) * 100),
+      }))
+      .sort((a, b) => b.errorRate - a.errorRate)
+      .slice(0, 3);
+
+    const overallPassRate =
+      allCourseAttempts > 0 ? Math.round((allCoursePassed / allCourseAttempts) * 100) : null;
+    const averageScore = allCourseAttempts > 0 ? Math.round(totalScoreSum / allCourseAttempts) : null;
+
+    let priority: 'high' | 'medium' | 'low' = 'low';
+    if (overallPassRate !== null && overallPassRate < 60) priority = 'high';
+    else if (overallPassRate !== null && overallPassRate < 80) priority = 'medium';
+
+    return {
+      course: {
+        id: course.id,
+        title: course.title,
+        description: course.description,
+        category: course.category?.name || 'General',
+        studentsCount: totalEnrolled,
+      },
+      summary: {
+        totalEnrolled,
+        evaluatedStudents: evaluatedStudentIds.size,
+        pendingStudents: Math.max(0, totalEnrolled - evaluatedStudentIds.size),
+        totalAttempts: allCourseAttempts,
+        passRate: overallPassRate,
+        averageScore,
+        priority,
+      },
+      lessons: lessonsList,
+      difficultQuestions,
+    };
+  }
+
+  /**
+   * SPEC-006: Lista detallada de estudiantes del curso con seguimiento académico
+   */
+  async getTeacherCourseStudents(teacherId: string, courseId: string) {
+    const course = await this.prisma.course.findFirst({
+      where: { id: courseId, teacherId },
+      include: {
+        enrollments: {
+          include: {
+            user: {
+              select: { id: true, name: true, email: true },
+            },
+          },
+        },
+        modules: {
+          include: {
+            lessons: {
+              include: {
+                exams: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!course) {
+      throw new NotFoundException('Curso no encontrado o no asignado a este docente.');
+    }
+
+    const allLessons = course.modules.flatMap((m) => m.lessons);
+    const totalLessons = allLessons.length;
+    const allExams = allLessons.flatMap((l) => l.exams);
+    const totalExams = allExams.length;
+    const examIds = allExams.map((e) => e.id);
+
+    const studentIds = course.enrollments.map((e) => e.userId);
+
+    const [progresses, attempts] = await Promise.all([
+      this.prisma.lessonProgress.findMany({
+        where: {
+          userId: { in: studentIds },
+          lessonId: { in: allLessons.map((l) => l.id) },
+          isCompleted: true,
+        },
+      }),
+      this.prisma.examAttempt.findMany({
+        where: {
+          userId: { in: studentIds },
+          examId: { in: examIds },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+
+    const studentsResult = course.enrollments.map((enr) => {
+      const student = enr.user;
+      const completedCount = progresses.filter((p) => p.userId === student.id).length;
+      const progressPercentage = totalLessons > 0 ? Math.round((completedCount / totalLessons) * 100) : 0;
+
+      // Obtener intentos de exámenes por estudiante (agrupando por examen y tomando el último intento)
+      const studentAttempts = attempts.filter((a) => a.userId === student.id);
+      const examMap = new Map<string, { isPassed: boolean; score: number }>();
+      studentAttempts.forEach((att) => {
+        if (!examMap.has(att.examId)) {
+          examMap.set(att.examId, { isPassed: att.isPassed, score: att.score });
+        }
+      });
+
+      let examsPassed = 0;
+      let examsFailed = 0;
+      examMap.forEach((v) => {
+        if (v.isPassed) examsPassed++;
+        else examsFailed++;
+      });
+      const examsEvaluated = examsPassed + examsFailed;
+      const examsPending = Math.max(0, totalExams - examsEvaluated);
+
+      const passRate = examsEvaluated > 0 ? Math.round((examsPassed / examsEvaluated) * 100) : null;
+
+      // Prioridad pedagógica:
+      let priority: 'high' | 'medium' | 'low' = 'low';
+      if (examsFailed >= 2 || (passRate !== null && passRate < 60)) {
+        priority = 'high';
+      } else if ((passRate !== null && passRate < 80) || (examsPending > 0 && completedCount > 0)) {
+        priority = 'medium';
+      }
+
+      return {
+        id: student.id,
+        name: student.name,
+        email: student.email,
+        enrolledAt: enr.enrolledAt,
+        completedLessons: completedCount,
+        totalLessons,
+        progressPercentage,
+        examsPassed,
+        examsFailed,
+        examsPending,
+        passRate,
+        priority,
+      };
+    });
+
+    const priorityWeight = { high: 0, medium: 1, low: 2 };
+    studentsResult.sort((a, b) => priorityWeight[a.priority] - priorityWeight[b.priority]);
+
+    return {
+      courseId: course.id,
+      courseTitle: course.title,
+      totalStudents: studentsResult.length,
+      students: studentsResult,
+    };
+  }
 }
 

@@ -10,7 +10,6 @@
       "supportsTablet": true
     },
     "android": {
-      "package": "com.skylearn.docente",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
