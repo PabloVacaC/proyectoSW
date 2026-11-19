@@ -14,7 +14,7 @@ Notifications.setNotificationHandler({
   }),
 });
 
-export const BACKEND_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000/api/v1';
+export const BACKEND_URL = process.env.EXPO_PUBLIC_API_URL || 'http://18.219.151.60/api/v1';
 
 export async function registerForPushNotificationsAsync(teacherToken?: string): Promise<string | null> {
   let token: string | null = null;
