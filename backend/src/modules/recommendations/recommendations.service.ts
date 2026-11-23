@@ -1,8 +1,9 @@
 // backend/src/modules/recommendations/recommendations.service.ts
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { GeminiService } from '../../common/services/gemini.service';
 import { SubmitQuizDto } from './dto/submit-quiz.dto';
+import { EvaluateDiagnosticDto } from './dto/diagnostic.dto';
 import { CourseStatus } from '@prisma/client';
 
 @Injectable()
@@ -174,6 +175,287 @@ Selecciona el curso más idóneo y responde ÚNICAMENTE en JSON con formato:
         url: `/lessons/${targetLessonId}`,
         color: 'sky',
       },
+    };
+  }
+
+  /**
+   * SPEC-007 (RF-1): Obtiene módulos activos del catálogo curricular para el diagnóstico
+   */
+  async getAvailableModules() {
+    const courses = await this.prisma.course.findMany({
+      where: { status: CourseStatus.PUBLISHED },
+      include: {
+        category: true,
+        modules: {
+          orderBy: { order: 'asc' },
+          include: {
+            lessons: {
+              orderBy: { order: 'asc' },
+              select: { id: true, title: true, order: true },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    return courses.flatMap((course) =>
+      course.modules
+        .filter((mod) => mod.lessons.length > 0)
+        .map((mod) => ({
+          id: mod.id,
+          title: mod.title,
+          order: mod.order,
+          courseId: course.id,
+          courseTitle: course.title,
+          category: course.category?.name || 'General',
+          lessonsCount: mod.lessons.length,
+          lessons: mod.lessons,
+        })),
+    );
+  }
+
+  /**
+   * SPEC-007 (RF-2, RF-3, RF-4, RF-5, RF-7):
+   * Genera preguntas de diagnóstico contextualizadas con los contenidos reales de las lecciones
+   */
+  async generateModuleDiagnostic(moduleId: string) {
+    const module = await this.prisma.module.findUnique({
+      where: { id: moduleId },
+      include: {
+        course: { include: { category: true } },
+        lessons: {
+          orderBy: { order: 'asc' },
+          include: {
+            exams: {
+              include: {
+                questions: {
+                  include: { options: true },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!module || module.lessons.length === 0) {
+      throw new NotFoundException(
+        'El módulo seleccionado no cuenta con suficientes lecciones para generar un diagnóstico.',
+      );
+    }
+
+    const lessonsData = module.lessons.map((l) => ({
+      id: l.id,
+      title: l.title,
+      order: l.order,
+      context: l.contextText || l.title,
+    }));
+
+    const fallbackGenerator = () => {
+      const fallbackQuestions = module.lessons.slice(0, 5).map((lesson, idx) => ({
+        id: `diag-q-${lesson.id}-${idx}`,
+        lessonId: lesson.id,
+        lessonTitle: lesson.title,
+        text: `¿Qué concepto clave se aborda principalmente en "${lesson.title}"?`,
+        options: [
+          `Fundamentos y aplicación de ${lesson.title}`,
+          'Estructuras obsoletas no utilizadas',
+          'Sintaxis de bibliotecas descontinuadas',
+          'Configuraciones externas no relacionadas con el tema',
+        ],
+        correctOptionIndex: 0,
+      }));
+
+      return {
+        title: `Diagnóstico de Conocimientos Previos: ${module.title}`,
+        moduleId: module.id,
+        moduleTitle: module.title,
+        courseTitle: module.course.title,
+        questions: fallbackQuestions,
+      };
+    };
+
+    const prompt = `Actúa como diseñador pedagógico y evaluador de Skylearn.
+Módulo curricular: "${module.title}" del curso "${module.course.title}".
+Lecciones reales disponibles:
+${lessonsData.map((l) => `- Lección (id: "${l.id}", orden: ${l.order}): "${l.title}". Contexto didáctico: "${l.context}"`).join('\n')}
+
+Genera un examen de diagnóstico inteligente de conocimientos previos de entre 4 y 6 preguntas de opción múltiple (4 opciones por pregunta).
+REGLAS ESTRICTAS:
+1. Cada pregunta DEBE evaluar un concepto concreto de una de las lecciones reales indicadas.
+2. Cada pregunta debe incluir exactamente el "lessonId" correspondiente.
+3. "correctOptionIndex" debe ser un número entre 0 y 3 indicando la opción correcta.
+4. Distribuye las preguntas de forma equilibrada a lo largo de las lecciones del módulo.
+
+Responde ÚNICAMENTE en JSON válido con la siguiente estructura:
+{
+  "title": "Diagnóstico de Conocimientos Previos: ${module.title}",
+  "moduleId": "${module.id}",
+  "moduleTitle": "${module.title}",
+  "courseTitle": "${module.course.title}",
+  "questions": [
+    {
+      "id": string,
+      "lessonId": string,
+      "lessonTitle": string,
+      "text": string,
+      "options": [string, string, string, string],
+      "correctOptionIndex": number
+    }
+  ]
+}`;
+
+    const aiResult = await this.geminiService.generateJson(prompt, fallbackGenerator);
+
+    const validLessonIds = new Set(module.lessons.map((l) => l.id));
+    const rawQuestions = Array.isArray(aiResult?.questions) ? aiResult.questions : [];
+    const normalizedQuestions = rawQuestions.map((q: any, i: number) => {
+      const lessonMatch = validLessonIds.has(q.lessonId)
+        ? module.lessons.find((l) => l.id === q.lessonId)
+        : module.lessons[i % module.lessons.length];
+
+      return {
+        id: q.id || `diag-q-${i}`,
+        lessonId: lessonMatch?.id || module.lessons[0].id,
+        lessonTitle: lessonMatch?.title || module.lessons[0].title,
+        text: q.text || `Pregunta sobre ${lessonMatch?.title}`,
+        options:
+          Array.isArray(q.options) && q.options.length >= 2
+            ? q.options
+            : ['Opción A', 'Opción B', 'Opción C', 'Opción D'],
+        correctOptionIndex: typeof q.correctOptionIndex === 'number' ? q.correctOptionIndex : 0,
+      };
+    });
+
+    return {
+      title: aiResult?.title || `Diagnóstico: ${module.title}`,
+      moduleId: module.id,
+      moduleTitle: module.title,
+      courseId: module.course.id,
+      courseTitle: module.course.title,
+      questions: normalizedQuestions.length > 0 ? normalizedQuestions : fallbackGenerator().questions,
+    };
+  }
+
+  /**
+   * SPEC-007 (RF-9 a RF-16):
+   * Analiza las respuestas del diagnóstico, detecta conocimientos dominados y pendientes,
+   * e indica la lección exacta recomendada para comenzar el aprendizaje (costo 0 créditos).
+   */
+  async evaluateModuleDiagnostic(userId: string, dto: EvaluateDiagnosticDto) {
+    const module = await this.prisma.module.findUnique({
+      where: { id: dto.moduleId },
+      include: {
+        course: true,
+        lessons: { orderBy: { order: 'asc' } },
+      },
+    });
+
+    if (!module || module.lessons.length === 0) {
+      throw new NotFoundException('Módulo no encontrado o sin lecciones disponibles.');
+    }
+
+    const lessons = module.lessons;
+    const totalQuestions = dto.answers.length;
+    let correctCount = 0;
+
+    const lessonPerformance = new Map<string, { correct: number; total: number }>();
+    lessons.forEach((l) => lessonPerformance.set(l.id, { correct: 0, total: 0 }));
+
+    dto.answers.forEach((ans) => {
+      const isCorrect = Boolean(ans.isCorrect);
+      if (isCorrect) correctCount++;
+      const current = lessonPerformance.get(ans.lessonId) || { correct: 0, total: 0 };
+      current.total++;
+      if (isCorrect) current.correct++;
+      lessonPerformance.set(ans.lessonId, current);
+    });
+
+    const scorePercentage = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
+
+    const masteredLessons: Array<{ id: string; title: string; order: number }> = [];
+    const pendingLessons: Array<{ id: string; title: string; order: number; reason: string }> = [];
+
+    lessons.forEach((l) => {
+      const perf = lessonPerformance.get(l.id);
+      if (!perf || perf.total === 0) {
+        if (scorePercentage >= 80) {
+          masteredLessons.push({ id: l.id, title: l.title, order: l.order });
+        } else {
+          pendingLessons.push({
+            id: l.id,
+            title: l.title,
+            order: l.order,
+            reason: 'Concepto clave por consolidar',
+          });
+        }
+      } else if (perf.correct === perf.total && perf.total > 0) {
+        masteredLessons.push({ id: l.id, title: l.title, order: l.order });
+      } else {
+        pendingLessons.push({
+          id: l.id,
+          title: l.title,
+          order: l.order,
+          reason: `Presentó dudas en ${perf.total - perf.correct} de ${perf.total} preguntas evaluadas`,
+        });
+      }
+    });
+
+    // Lección recomendada: primera lección pendiente según orden curricular
+    let recommendedLesson =
+      pendingLessons.length > 0
+        ? lessons.find((l) => l.id === pendingLessons[0].id) || lessons[0]
+        : lessons[lessons.length - 1];
+
+    let knowledgeLevel: 'Principiante' | 'Intermedio' | 'Avanzado' = 'Principiante';
+    if (scorePercentage >= 80) knowledgeLevel = 'Avanzado';
+    else if (scorePercentage >= 50) knowledgeLevel = 'Intermedio';
+
+    let justification = '';
+    if (scorePercentage >= 80) {
+      justification = `¡Excelente dominio! Demuestras conocimientos sólidos en la mayoría de los temas de "${module.title}". Te recomendamos comenzar directamente desde "${recommendedLesson.title}" para no repetir conceptos que ya conoces.`;
+    } else if (scorePercentage >= 50) {
+      justification = `Tienes una base positiva sobre los temas iniciales, pero detectamos conceptos que debes reforzar. Te sugerimos iniciar en "${recommendedLesson.title}".`;
+    } else {
+      justification = `Estás dando tus primeros pasos en "${module.title}". Te sugerimos comenzar desde el inicio en "${recommendedLesson.title}" para construir unas bases sólidas paso a paso.`;
+    }
+
+    // Inscribir al estudiante automáticamente al curso sin costo de créditos (RF-04.1)
+    if (userId) {
+      await this.prisma.enrollment.upsert({
+        where: {
+          userId_courseId: {
+            userId,
+            courseId: module.course.id,
+          },
+        },
+        update: {},
+        create: {
+          userId,
+          courseId: module.course.id,
+        },
+      });
+    }
+
+    return {
+      moduleId: module.id,
+      moduleTitle: module.title,
+      courseId: module.course.id,
+      courseTitle: module.course.title,
+      knowledgeLevel,
+      scorePercentage,
+      totalQuestions,
+      correctAnswers: correctCount,
+      masteredLessons,
+      pendingLessons,
+      recommendedLesson: {
+        id: recommendedLesson.id,
+        title: recommendedLesson.title,
+        order: recommendedLesson.order,
+        url: `/lessons/${recommendedLesson.id}`,
+      },
+      justification,
     };
   }
 }

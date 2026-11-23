@@ -528,9 +528,11 @@ export function App() {
       {showQuiz && (
         <RecommendationQuiz
           onClose={() => setShowQuiz(false)}
-          onNavigateToLesson={() => {
+          onNavigateToLesson={(lessonId: string) => {
             setShowQuiz(false);
-            if (courses.length > 0) {
+            if (lessonId) {
+              window.location.hash = `#/lessons/${lessonId}`;
+            } else if (courses.length > 0) {
               window.location.hash = `#/courses/${courses[0].id}`;
             }
           }}
