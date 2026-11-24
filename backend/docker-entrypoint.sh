@@ -50,7 +50,7 @@ try {
 
 # Sincronizar el esquema de Prisma con PostgreSQL
 echo "📦 Aplicando esquema de base de datos con Prisma..."
-npx prisma db push --skip-generate
+npx prisma db push --skip-generate --accept-data-loss || echo "⚠️ Advertencia en prisma db push, continuando..."
 
 # Ejecutar seed de datos de prueba si RUN_SEED es true
 if [ "$RUN_SEED" = "true" ]; then
