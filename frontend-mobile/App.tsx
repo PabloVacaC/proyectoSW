@@ -207,6 +207,17 @@ export default function App() {
     }
   };
 
+  // Prueba interactiva de notificación push tipo WhatsApp
+  const handleTestPush = async () => {
+    const sent = await sendWelcomePushNotification('Docente');
+    if (!sent) {
+      Alert.alert(
+        'Permiso Requerido',
+        'Por favor concede permiso de notificaciones a Expo Go en los ajustes de tu dispositivo para desplegar el aviso emergente tipo WhatsApp.'
+      );
+    }
+  };
+
   // Cerrar Sesión
   const handleLogout = async () => {
     if (pushToken && token) {
@@ -780,7 +791,7 @@ export default function App() {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.actionBtn, { borderColor: '#25D366' }]}
-              onPress={() => void sendWelcomePushNotification('Docente')}
+              onPress={handleTestPush}
             >
               <Text style={[styles.actionBtnText, { color: '#128C7E' }]}>💬 Probar Push</Text>
             </TouchableOpacity>
