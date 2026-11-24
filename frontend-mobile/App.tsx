@@ -207,17 +207,6 @@ export default function App() {
     }
   };
 
-  // Prueba interactiva de notificación push tipo WhatsApp
-  const handleTestPush = async () => {
-    const sent = await sendWelcomePushNotification('Docente');
-    if (!sent) {
-      Alert.alert(
-        'Permiso Requerido',
-        'Por favor concede permiso de notificaciones a Expo Go en los ajustes de tu dispositivo para desplegar el aviso emergente tipo WhatsApp.'
-      );
-    }
-  };
-
   // Cerrar Sesión
   const handleLogout = async () => {
     if (pushToken && token) {
@@ -779,7 +768,6 @@ export default function App() {
           <Text style={styles.headerBadge}>PANEL ACADÉMICO DOCENTE</Text>
           <Text style={styles.headerTitle}>Skylearn Docente</Text>
           <Text style={styles.headerSubtitle}>Supervisión académica, lecciones críticas y reuniones</Text>
-          <Text style={styles.pushStatusText}>{pushStatus}</Text>
           {authError ? <Text style={styles.errorBanner}>{authError}</Text> : null}
 
           <View style={styles.actionBtnRow}>
@@ -788,12 +776,6 @@ export default function App() {
               onPress={() => void refreshDashboard(token)}
             >
               <Text style={styles.actionBtnText}>🔄 Actualizar</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.actionBtn, { borderColor: '#25D366' }]}
-              onPress={handleTestPush}
-            >
-              <Text style={[styles.actionBtnText, { color: '#128C7E' }]}>💬 Probar Push</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.actionBtn, { borderColor: SkylearnColors.coral }]}
