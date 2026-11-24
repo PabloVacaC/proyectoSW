@@ -215,7 +215,7 @@ export default function App() {
           headers: { Authorization: `Bearer ${token}` },
           data: { pushToken },
         });
-      } catch {}
+      } catch { }
     }
     setToken('');
     setPushToken(null);
@@ -401,8 +401,8 @@ export default function App() {
               {courseDetail?.summary.priority === 'high'
                 ? '🔴 Alta'
                 : courseDetail?.summary.priority === 'medium'
-                ? '🟡 Media'
-                : '🟢 Normal'}
+                  ? '🟡 Media'
+                  : '🟢 Normal'}
             </Text>
           </View>
 
@@ -489,8 +489,8 @@ export default function App() {
                               lesson.difficulty === 'high'
                                 ? styles.badgeHigh
                                 : lesson.difficulty === 'medium'
-                                ? styles.badgeMedium
-                                : styles.badgeLow,
+                                  ? styles.badgeMedium
+                                  : styles.badgeLow,
                             ]}
                           >
                             <Text style={styles.badgeText}>
@@ -552,10 +552,10 @@ export default function App() {
                           {filter === 'all'
                             ? 'Todos'
                             : filter === 'high'
-                            ? '🔴 Alta'
-                            : filter === 'medium'
-                            ? '🟡 Media'
-                            : '🟢 Normal'}
+                              ? '🔴 Alta'
+                              : filter === 'medium'
+                                ? '🟡 Media'
+                                : '🟢 Normal'}
                         </Text>
                       </TouchableOpacity>
                     ))}
@@ -578,16 +578,16 @@ export default function App() {
                               st.priority === 'high'
                                 ? styles.priorityHigh
                                 : st.priority === 'medium'
-                                ? styles.priorityMedium
-                                : styles.priorityLow,
+                                  ? styles.priorityMedium
+                                  : styles.priorityLow,
                             ]}
                           >
                             <Text style={styles.priorityText}>
                               {st.priority === 'high'
                                 ? 'Prioridad Alta'
                                 : st.priority === 'medium'
-                                ? 'En Seguimiento'
-                                : 'Adecuado'}
+                                  ? 'En Seguimiento'
+                                  : 'Adecuado'}
                             </Text>
                           </View>
                         </View>
