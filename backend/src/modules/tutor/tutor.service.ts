@@ -308,23 +308,40 @@ Responde ÚNICAMENTE en formato JSON conciso:
         prompt,
         () => {
           const userText = (dto.userResponse || '').trim().toLowerCase();
-          const isNegative =
+          const isClarificationOrDoubt =
             userText.length < 3 ||
-            ['no se', 'no sé', 'no me acuerdo', 'ni idea', 'no recuerdo'].some((w) =>
-              userText.includes(w),
-            );
+            [
+              'no se', 'no sé', 'no entiendo', 'no comprendo', 'no me acuerdo',
+              'ni idea', 'no recuerdo', 'resumen', 'ayuda', 'explicame', 'explícame',
+              'que es', 'qué es', 'como es', 'cómo es', 'repite', 'repetir', 'duda'
+            ].some((w) => userText.includes(w));
+
+          const contextExplanation = currentLesson.contextText
+            ? `En "${currentLesson.title}": ${currentLesson.contextText.slice(0, 160)}...`
+            : `En "${currentLesson.title}" estamos revisando los conceptos y la aplicación práctica de esta clase.`;
+
+          if (isClarificationOrDoubt) {
+            return {
+              isCorrect: false,
+              feedbackText: `¡No te preocupes! ${contextExplanation} ¿Te gustaría que repasemos un ejemplo juntos?`,
+              avatarEmotion: 'explaining' as AvatarEmotionType,
+              speechSegments: [
+                {
+                  text: `¡No te preocupes! ${contextExplanation}`,
+                  pose: 'explaining' as AvatarEmotionType,
+                },
+              ],
+            };
+          }
+
           return {
-            isCorrect: !isNegative,
-            feedbackText: !isNegative
-              ? `¡Buen análisis sobre "${currentLesson.title}"! Tu respuesta refleja los conceptos clave de la clase.`
-              : `Comprendo tu inquietud. No te preocupes, en "${currentLesson.title}" estamos para aprender paso a paso juntos.`,
-            avatarEmotion: (!isNegative ? 'celebrating' : 'encouraging') as AvatarEmotionType,
+            isCorrect: true,
+            feedbackText: `¡Buen razonamiento sobre "${currentLesson.title}"! ${contextExplanation}`,
+            avatarEmotion: 'celebrating' as AvatarEmotionType,
             speechSegments: [
               {
-                text: !isNegative
-                  ? `¡Buen análisis sobre "${currentLesson.title}"!`
-                  : `Comprendo tu duda sobre "${currentLesson.title}".`,
-                pose: (!isNegative ? 'celebrating' : 'encouraging') as AvatarEmotionType,
+                text: `¡Buen razonamiento sobre "${currentLesson.title}"!`,
+                pose: 'celebrating' as AvatarEmotionType,
               },
             ],
           };

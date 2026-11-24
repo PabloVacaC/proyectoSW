@@ -17,11 +17,14 @@ export class GeminiService implements OnModuleInit {
   private readonly ollamaModel: string;
   private readonly ollamaFallbackModel = 'llama3.2:latest';
 
-  // Cascada de modelos vigentes para Google Gemini (Nube de alta velocidad)
+  // Cascada de modelos vigentes para Google Gemini (Nube de alta velocidad y razonamiento)
   private readonly fallbackModels = [
-    'gemini-2.0-flash',
-    'gemini-1.5-flash',
-    'gemini-1.5-flash-8b',
+    'gemini-3.5-flash',
+    'gemini-3.1-flash-lite-preview',
+    'gemini-flash-latest',
+    'gemini-3.8-flash',
+    'gemini-3-flash-preview',
+    'gemini-2.5-flash',
   ];
 
   constructor(private readonly configService: ConfigService) {
@@ -32,7 +35,6 @@ export class GeminiService implements OnModuleInit {
     const apiKey = this.configService.get<string>('GEMINI_API_KEY');
     const isPlaceholderKey =
       !apiKey ||
-      !apiKey.startsWith('AIzaSy') ||
       apiKey === 'AIzaSyDemoKeyForDevelopmentMode2026' ||
       apiKey === 'AIzaSyTuClaveRealDeGeminiAqui' ||
       apiKey === 'demo_key' ||
@@ -40,7 +42,7 @@ export class GeminiService implements OnModuleInit {
 
     if (!isPlaceholderKey) {
       this.genAI = new GoogleGenerativeAI(apiKey);
-      this.logger.log('Google Gemini API inicializado.');
+      this.logger.log('Google Gemini API inicializado con éxito.');
     } else {
       this.logger.log(
         'GEMINI_API_KEY no configurada o es demo. Se priorizará Ollama IA Local (100% Offline).',
