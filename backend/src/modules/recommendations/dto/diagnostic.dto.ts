@@ -20,8 +20,12 @@ export class DiagnosticAnswerItemDto {
 
 export class EvaluateDiagnosticDto {
   @IsUUID()
-  @IsNotEmpty()
-  moduleId: string;
+  @IsOptional()
+  courseId?: string;
+
+  @IsUUID()
+  @IsOptional()
+  moduleId?: string;
 
   @IsArray()
   @ValidateNested({ each: true })

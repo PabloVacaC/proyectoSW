@@ -12,6 +12,7 @@ import {
   Layers,
   Award,
   Loader2,
+  GraduationCap,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { api } from '../services/api';
@@ -22,15 +23,22 @@ interface LessonSummary {
   order: number;
 }
 
-interface ModuleItem {
+interface ModuleSummary {
   id: string;
   title: string;
   order: number;
-  courseId: string;
-  courseTitle: string;
-  category: string;
   lessonsCount: number;
-  lessons: LessonSummary[];
+  lessons?: LessonSummary[];
+}
+
+interface CourseItem {
+  id: string;
+  title: string;
+  description?: string;
+  category: string;
+  modulesCount: number;
+  lessonsCount: number;
+  modules?: ModuleSummary[];
 }
 
 interface DiagnosticQuestion {
@@ -43,10 +51,10 @@ interface DiagnosticQuestion {
 }
 
 interface DiagnosticEvaluationResult {
-  moduleId: string;
-  moduleTitle: string;
   courseId: string;
   courseTitle: string;
+  moduleId?: string;
+  moduleTitle?: string;
   knowledgeLevel: 'Principiante' | 'Intermedio' | 'Avanzado';
   scorePercentage: number;
   totalQuestions: number;
@@ -67,109 +75,174 @@ interface RecommendationQuizProps {
   onNavigateToLesson: (lessonId: string) => void;
 }
 
-type StepMode = 'select_module' | 'answering' | 'evaluating' | 'result';
+type StepMode = 'select_course' | 'answering' | 'evaluating' | 'result';
 
 export const RecommendationQuiz: React.FC<RecommendationQuizProps> = ({
   onClose,
   onNavigateToLesson,
 }) => {
-  const [mode, setMode] = useState<StepMode>('select_module');
-  const [modules, setModules] = useState<ModuleItem[]>([]);
-  const [selectedModule, setSelectedModule] = useState<ModuleItem | null>(null);
+  const [mode, setMode] = useState<StepMode>('select_course');
+  const [courses, setCourses] = useState<CourseItem[]>([]);
+  const [selectedCourse, setSelectedCourse] = useState<CourseItem | null>(null);
   const [questions, setQuestions] = useState<DiagnosticQuestion[]>([]);
   const [currentStep, setCurrentStep] = useState(0);
   const [selectedAnswers, setSelectedAnswers] = useState<Record<string, number>>({});
-  const [loadingModules, setLoadingModules] = useState(true);
+  const [loadingCourses, setLoadingCourses] = useState(true);
   const [loadingQuestions, setLoadingQuestions] = useState(false);
   const [evaluationResult, setEvaluationResult] = useState<DiagnosticEvaluationResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // RF-1: Cargar módulos disponibles al abrir
+  // RF-1: Cargar cursos activos del catálogo para diagnóstico
   useEffect(() => {
     let isMounted = true;
-    const fetchModules = async () => {
+    const fetchCourses = async () => {
       try {
-        setLoadingModules(true);
+        setLoadingCourses(true);
         setErrorMessage(null);
-        const res = await api.get('/recommendations/modules');
+        const res = await api.get('/recommendations/courses');
         if (isMounted) {
-          const data = Array.isArray(res.data) ? res.data : [];
-          setModules(data);
+          const data: CourseItem[] = Array.isArray(res.data) ? res.data : [];
+          setCourses(data);
           if (data.length === 0) {
-            setErrorMessage('No hay módulos publicados con lecciones disponibles en este momento.');
+            setErrorMessage('No hay cursos publicados con lecciones disponibles en este momento.');
           }
         }
       } catch (err: any) {
-        console.error('Error al cargar módulos para diagnóstico:', err);
+        console.error('Error al cargar cursos para diagnóstico:', err);
         if (isMounted) {
-          // Fallback a módulos de demostración si la API está sin inicializar
-          setModules([
-            {
-              id: '00000000-0000-0000-0000-000000000010',
-              title: 'Fundamentos de HTML5 y Semántica Moderna',
-              order: 1,
-              courseId: '00000000-0000-0000-0000-000000000001',
-              courseTitle: 'Desarrollo Web Fullstack con React y NestJS',
-              category: 'Desarrollo Web',
-              lessonsCount: 3,
-              lessons: [
-                { id: '00000000-0000-0000-0000-000000000100', title: 'Estructura Semántica y Etiquetas', order: 1 },
-                { id: '00000000-0000-0000-0000-000000000101', title: 'Formularios Accesibles y Validaciones', order: 2 },
-                { id: '00000000-0000-0000-0000-000000000102', title: 'Buenas Prácticas de SEO y Accesibilidad', order: 3 },
-              ],
-            },
-          ]);
+          // Fallback consultando módulos si el endpoint de cursos no responde
+          try {
+            const modRes = await api.get('/recommendations/modules');
+            const modData = Array.isArray(modRes.data) ? modRes.data : [];
+            const groupedMap = new Map<string, CourseItem>();
+
+            modData.forEach((m: any) => {
+              if (!groupedMap.has(m.courseId)) {
+                groupedMap.set(m.courseId, {
+                  id: m.courseId,
+                  title: m.courseTitle || 'Curso Curricular',
+                  category: m.category || 'General',
+                  modulesCount: 0,
+                  lessonsCount: 0,
+                  modules: [],
+                });
+              }
+              const c = groupedMap.get(m.courseId)!;
+              c.modulesCount++;
+              c.lessonsCount += m.lessonsCount || 0;
+              c.modules?.push({
+                id: m.id,
+                title: m.title,
+                order: m.order,
+                lessonsCount: m.lessonsCount,
+                lessons: m.lessons,
+              });
+            });
+
+            const parsedCourses = Array.from(groupedMap.values());
+            if (parsedCourses.length > 0) {
+              setCourses(parsedCourses);
+            } else {
+              throw new Error('Sin datos');
+            }
+          } catch {
+            // Fallback de demostración si la base de datos está offline
+            setCourses([
+              {
+                id: '00000000-0000-0000-0000-000000000001',
+                title: 'Desarrollo Web Fullstack con React y NestJS',
+                description: 'Aprende a construir aplicaciones escalables desacopladas con TypeScript, Three.js y Postgres',
+                category: 'Desarrollo Web',
+                modulesCount: 2,
+                lessonsCount: 7,
+              },
+              {
+                id: '00000000-0000-0000-0000-000000000002',
+                title: 'Inteligencia Artificial y Modelos Multimodales',
+                description: 'Domina los LLMs, ingeniería de prompts avanzada, tool calling y arquitecturas agénticas',
+                category: 'Inteligencia Artificial',
+                modulesCount: 1,
+                lessonsCount: 3,
+              },
+            ]);
+          }
         }
       } finally {
-        if (isMounted) setLoadingModules(false);
+        if (isMounted) setLoadingCourses(false);
       }
     };
-    fetchModules();
+    fetchCourses();
     return () => {
       isMounted = false;
     };
   }, []);
 
-  // RF-2 a RF-8: Iniciar diagnóstico para el módulo seleccionado
-  const handleSelectModule = async (mod: ModuleItem) => {
-    setSelectedModule(mod);
+  // Iniciar diagnóstico para el curso seleccionado
+  const handleSelectCourse = async (course: CourseItem) => {
+    setSelectedCourse(course);
     setLoadingQuestions(true);
     setErrorMessage(null);
     try {
-      const res = await api.get(`/recommendations/diagnostic/${mod.id}`);
+      const res = await api.get(`/recommendations/diagnostic/course/${course.id}`);
       const qs: DiagnosticQuestion[] = res.data?.questions || [];
       if (qs.length === 0) {
-        throw new Error('No se generaron preguntas para este módulo.');
+        throw new Error('No se generaron preguntas para este curso.');
       }
       setQuestions(qs);
       setCurrentStep(0);
       setSelectedAnswers({});
       setMode('answering');
     } catch (err: any) {
-      console.error('Error generando preguntas de diagnóstico:', err);
-      // Fallback determinista si la IA o la red fallan
-      const fallbackQs: DiagnosticQuestion[] = (mod.lessons || []).slice(0, 4).map((l) => ({
-        id: `q-fallback-${l.id}`,
-        lessonId: l.id,
-        lessonTitle: l.title,
-        text: `¿Qué objetivo principal se persigue en la lección "${l.title}"?`,
-        options: [
-          `Comprender los fundamentos y buenas prácticas de ${l.title}`,
-          'Memorizar sintaxis obsoleta sin aplicación práctica',
-          'Configurar dependencias descontinuadas',
-          'Omitir validaciones de arquitectura',
-        ],
-        correctOptionIndex: 0,
-      }));
-
-      if (fallbackQs.length > 0) {
-        setQuestions(fallbackQs);
-        setCurrentStep(0);
-        setSelectedAnswers({});
-        setMode('answering');
-      } else {
-        setErrorMessage('El módulo no cuenta con lecciones suficientes para generar un diagnóstico.');
+      console.error('Error generando preguntas del curso, probando fallback:', err);
+      // Fallback: si tiene módulos, intentar con el primer módulo
+      if (course.modules && course.modules.length > 0) {
+        try {
+          const modRes = await api.get(`/recommendations/diagnostic/${course.modules[0].id}`);
+          const modQs: DiagnosticQuestion[] = modRes.data?.questions || [];
+          if (modQs.length > 0) {
+            setQuestions(modQs);
+            setCurrentStep(0);
+            setSelectedAnswers({});
+            setMode('answering');
+            return;
+          }
+        } catch {}
       }
+
+      // Fallback determinista local
+      const fallbackQs: DiagnosticQuestion[] = [
+        {
+          id: `q-fallback-1`,
+          lessonId: '00000000-0000-0000-0000-000000000100',
+          lessonTitle: 'Fundamentos Iniciales del Curso',
+          text: `Respecto a "${course.title}": ¿Cuál es el concepto clave que se aborda en sus clases iniciales?`,
+          options: [
+            `Estructura fundamental, sintaxis moderna y buenas prácticas pedagógicas`,
+            'Técnicas obsoletas no estándar',
+            'Configuraciones manuales sin documentación',
+            'Prácticas descontinuadas',
+          ],
+          correctOptionIndex: 0,
+        },
+        {
+          id: `q-fallback-2`,
+          lessonId: '00000000-0000-0000-0000-000000000101',
+          lessonTitle: 'Aplicación Práctica y Gestión de Estado',
+          text: `En el desarrollo del curso "${course.title}": ¿Qué habilidad práctica se promueve en las lecciones intermedias?`,
+          options: [
+            `Manejo de estado inmutable y componentes reactivos interactivos`,
+            'Evitar el uso de librerías modernas',
+            'Deshabilitar las verificaciones del compilador',
+            'Omitir la separación de capas de software',
+          ],
+          correctOptionIndex: 0,
+        },
+      ];
+
+      setQuestions(fallbackQs);
+      setCurrentStep(0);
+      setSelectedAnswers({});
+      setMode('answering');
     } finally {
       setLoadingQuestions(false);
     }
@@ -197,7 +270,7 @@ export const RecommendationQuiz: React.FC<RecommendationQuizProps> = ({
 
   // RF-9 a RF-16: Evaluar diagnóstico
   const handleSubmitEvaluation = async () => {
-    if (!selectedModule) return;
+    if (!selectedCourse) return;
     setMode('evaluating');
     setErrorMessage(null);
 
@@ -213,7 +286,7 @@ export const RecommendationQuiz: React.FC<RecommendationQuizProps> = ({
 
     try {
       const res = await api.post('/recommendations/diagnostic/evaluate', {
-        moduleId: selectedModule.id,
+        courseId: selectedCourse.id,
         answers: answersPayload,
       });
 
@@ -226,30 +299,36 @@ export const RecommendationQuiz: React.FC<RecommendationQuizProps> = ({
       });
     } catch (err: any) {
       console.error('Error al evaluar diagnóstico en backend:', err);
-      // Fallback heurístico en cliente para garantizar que el usuario nunca quede atrapado (RF-23, RNF-5)
+      // Fallback heurístico en cliente para garantizar que el usuario nunca quede atrapado
       const correctCount = answersPayload.filter((a) => a.isCorrect).length;
       const scorePercentage = Math.round((correctCount / questions.length) * 100);
 
-      const mastered = scorePercentage === 0 ? [] : selectedModule.lessons.filter((_, idx) =>
-        scorePercentage >= 75 ? true : idx === 0,
-      );
-      const pending = selectedModule.lessons.filter((l) => !mastered.some((m) => m.id === l.id));
-      const targetLesson = pending[0] || selectedModule.lessons[0];
+      const allCourseLessons: LessonSummary[] =
+        selectedCourse.modules?.flatMap((m) => m.lessons || []) || [
+          { id: '00000000-0000-0000-0000-000000000100', title: 'Lección 1: Fundamentos', order: 1 },
+          { id: '00000000-0000-0000-0000-000000000101', title: 'Lección 2: Estado Reactivo', order: 2 },
+          { id: '00000000-0000-0000-0000-000000000102', title: 'Lección 3: Efectos Secundarios', order: 3 },
+        ];
+
+      const mastered =
+        scorePercentage === 0
+          ? []
+          : allCourseLessons.filter((_, idx) => (scorePercentage >= 75 ? true : idx === 0));
+      const pending = allCourseLessons.filter((l) => !mastered.some((m) => m.id === l.id));
+      const targetLesson = pending[0] || allCourseLessons[0];
 
       let justification = '';
       if (scorePercentage === 0) {
-        justification = `Debido a que respondiste incorrectamente a las preguntas del cuestionario (0% de aciertos), te recomendamos comenzar obligatoriamente desde la primera lección ("${selectedModule.lessons[0].title}") para aprender las bases pedagógicas paso a paso desde cero.`;
+        justification = `Debido a que respondiste incorrectamente a las preguntas del cuestionario (0% de aciertos), te recomendamos comenzar obligatoriamente desde la primera lección ("${allCourseLessons[0].title}") para aprender las bases pedagógicas paso a paso desde cero.`;
       } else if (mastered.length > 0 && targetLesson.order > 1) {
         justification = `¡Excelente progreso! Has demostrado conocimientos previos en los temas iniciales, por lo que no necesitas empezar desde cero. Te recomendamos comenzar directamente en la lección ${targetLesson.order} ("${targetLesson.title}").`;
       } else {
-        justification = `Te recomendamos iniciar en "${targetLesson.title}" para consolidar tus competencias en este módulo curricular.`;
+        justification = `Te recomendamos iniciar en "${targetLesson.title}" para consolidar tus competencias en este curso.`;
       }
 
       setEvaluationResult({
-        moduleId: selectedModule.id,
-        moduleTitle: selectedModule.title,
-        courseId: selectedModule.courseId,
-        courseTitle: selectedModule.courseTitle,
+        courseId: selectedCourse.id,
+        courseTitle: selectedCourse.title,
         knowledgeLevel: scorePercentage >= 75 ? 'Avanzado' : scorePercentage >= 50 ? 'Intermedio' : 'Principiante',
         scorePercentage,
         totalQuestions: questions.length,
@@ -301,46 +380,76 @@ export const RecommendationQuiz: React.FC<RecommendationQuizProps> = ({
         )}
 
         {/* ============================================================ */}
-        {/* PASO 0: SELECCIÓN DE MÓDULO CURRICULAR (RF-1, RF-2, RF-18) */}
+        {/* PASO 0: SELECCIÓN DE CURSO (RF-1, RF-2, RF-18) */}
         {/* ============================================================ */}
-        {mode === 'select_module' && (
+        {mode === 'select_course' && (
           <div style={styles.content}>
             <div style={{ textAlign: 'left', marginBottom: '8px' }}>
-              <h2 style={styles.mainTitle}>Cursos y Módulos Curriculares Disponibles</h2>
+              <h2 style={styles.mainTitle}>Cursos Disponibles para Diagnóstico</h2>
               <p style={styles.mainSubtitle}>
-                Selecciona el módulo que deseas aprender. Nuestra IA analizará el <strong>Resumen Pedagógico</strong> de sus lecciones
-                para determinar tus conocimientos previos y recomendarte la lección exacta donde debes empezar, ¡evitando que tengas que comenzar desde cero!
+                Selecciona el <strong>curso</strong> que deseas aprender. Nuestra IA analizará el{' '}
+                <strong>Resumen Pedagógico</strong> de sus clases para evaluar tus conocimientos previos
+                y recomendarte la lección exacta donde debes empezar, ¡evitando que tengas que comenzar
+                desde cero si ya dominas las bases!
               </p>
             </div>
 
-            {loadingModules ? (
+            {loadingCourses ? (
               <div style={styles.centerSpinner}>
                 <Loader2 size={32} className="spin-animation" color="var(--color-sky-deep)" />
                 <span style={{ fontSize: '14px', color: 'var(--color-ink-muted)', marginTop: '8px' }}>
-                  Cargando módulos curriculares disponibles...
+                  Cargando cursos disponibles del catálogo...
                 </span>
               </div>
             ) : (
               <div style={styles.modulesGrid}>
-                {modules.map((mod) => (
+                {courses.map((course) => (
                   <div
-                    key={mod.id}
-                    onClick={() => handleSelectModule(mod)}
-                    style={styles.moduleCard}
+                    key={course.id}
+                    onClick={() => handleSelectCourse(course)}
+                    style={styles.courseCard}
                     role="button"
                     tabIndex={0}
                   >
                     <div style={styles.moduleHeader}>
-                      <span style={styles.categoryPill}>{mod.category}</span>
+                      <span style={styles.categoryPill}>{course.category}</span>
                       <span style={styles.lessonCountBadge}>
-                        <BookOpen size={13} /> {mod.lessonsCount} lecciones
+                        <BookOpen size={13} /> {course.modulesCount || 1} módulos • {course.lessonsCount} lecciones
                       </span>
                     </div>
-                    <h3 style={styles.moduleTitle}>{mod.title}</h3>
-                    <p style={styles.moduleCourse}>Curso: {mod.courseTitle}</p>
+
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginBottom: '6px' }}>
+                      <GraduationCap size={20} color="var(--color-sky-deep)" style={{ flexShrink: 0, marginTop: '2px' }} />
+                      <h3 style={styles.moduleTitle}>{course.title}</h3>
+                    </div>
+
+                    {course.description && (
+                      <p style={styles.moduleCourse}>
+                        {course.description.length > 105
+                          ? course.description.slice(0, 105) + '...'
+                          : course.description}
+                      </p>
+                    )}
+
+                    {course.modules && course.modules.length > 0 && (
+                      <div style={styles.modulesPreviewList}>
+                        <span style={styles.modulesPreviewTitle}>Módulos temáticos incluidos:</span>
+                        <div style={styles.modulesTagsRow}>
+                          {course.modules.slice(0, 3).map((m) => (
+                            <span key={m.id} style={styles.moduleSmallPill}>
+                              {m.title}
+                            </span>
+                          ))}
+                          {course.modules.length > 3 && (
+                            <span style={styles.moduleSmallPill}>+{course.modules.length - 3} más</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
                     <div style={styles.cardFooter}>
                       <span style={styles.cardFooterLink}>
-                        Evaluar mis conocimientos <ArrowRight size={15} />
+                        Evaluar mis conocimientos en este curso <ArrowRight size={15} />
                       </span>
                     </div>
                   </div>
@@ -355,7 +464,7 @@ export const RecommendationQuiz: React.FC<RecommendationQuizProps> = ({
                   Generando preguntas diagnósticas con IA contextualizada...
                 </p>
                 <span style={{ fontSize: '13px', color: 'var(--color-ink-muted)' }}>
-                  Analizando contenidos y lecciones del módulo...
+                  Analizando el Resumen Pedagógico de las clases del curso...
                 </span>
               </div>
             )}
@@ -430,10 +539,10 @@ export const RecommendationQuiz: React.FC<RecommendationQuizProps> = ({
                   )}
                   <button
                     type="button"
-                    onClick={() => setMode('select_module')}
+                    onClick={() => setMode('select_course')}
                     className="btn-secondary"
                   >
-                    Cambiar Módulo
+                    Cambiar Curso
                   </button>
                 </div>
 
@@ -473,7 +582,7 @@ export const RecommendationQuiz: React.FC<RecommendationQuizProps> = ({
               Analizando tus respuestas con IA pedagógica...
             </h3>
             <p style={{ fontSize: '14px', color: 'var(--color-ink-muted)', maxWidth: '420px', textAlign: 'center' }}>
-              Identificando qué conocimientos ya dominas y cuáles requieren refuerzo para ubicar tu lección ideal.
+              Identificando qué clases ya dominas y cuáles requieren refuerzo para ubicar tu lección ideal de inicio.
             </p>
           </div>
         )}
@@ -489,7 +598,7 @@ export const RecommendationQuiz: React.FC<RecommendationQuizProps> = ({
 
             <h3 style={styles.resultTitle}>¡Diagnóstico Completado con Éxito!</h3>
             <p style={styles.resultDesc}>
-              Evaluamos tus conocimientos sobre el módulo <strong>{evaluationResult.moduleTitle}</strong>.
+              Evaluamos tus conocimientos sobre el curso <strong>{evaluationResult.courseTitle}</strong>.
             </p>
 
             {/* Fila de Nivel y Puntaje */}
@@ -621,8 +730,8 @@ const styles: Record<string, React.CSSProperties> = {
   },
   card: {
     width: '100%',
-    maxWidth: '680px',
-    maxHeight: '90vh',
+    maxWidth: '720px',
+    maxHeight: '92vh',
     overflowY: 'auto',
     backgroundColor: 'var(--color-surface-elevated)',
     padding: '28px',
@@ -683,25 +792,28 @@ const styles: Record<string, React.CSSProperties> = {
   },
   modulesGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-    gap: '12px',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+    gap: '14px',
     marginTop: '16px',
     marginBottom: '20px',
   },
-  moduleCard: {
-    padding: '16px',
+  courseCard: {
+    padding: '18px',
     backgroundColor: 'var(--color-surface)',
-    borderRadius: 'var(--radius-md)',
+    borderRadius: 'var(--radius-lg)',
     border: '1.5px solid var(--color-outline)',
     cursor: 'pointer',
-    transition: 'transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease',
+    transition: 'all 0.2s ease',
     textAlign: 'left',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'space-between',
   },
   moduleHeader: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '8px',
+    marginBottom: '10px',
   },
   categoryPill: {
     fontSize: '11px',
@@ -720,25 +832,53 @@ const styles: Record<string, React.CSSProperties> = {
     gap: '4px',
   },
   moduleTitle: {
-    fontSize: '15px',
+    fontSize: '16px',
     fontWeight: 800,
     color: 'var(--color-ink)',
-    marginBottom: '4px',
     lineHeight: 1.3,
   },
   moduleCourse: {
-    fontSize: '12px',
+    fontSize: '13px',
     color: 'var(--color-ink-muted)',
+    lineHeight: 1.4,
     marginBottom: '10px',
+  },
+  modulesPreviewList: {
+    backgroundColor: 'var(--color-surface-sunken)',
+    padding: '8px 10px',
+    borderRadius: 'var(--radius-sm)',
+    marginBottom: '12px',
+  },
+  modulesPreviewTitle: {
+    fontSize: '10px',
+    fontWeight: 700,
+    color: 'var(--color-ink-subtle)',
+    textTransform: 'uppercase',
+    display: 'block',
+    marginBottom: '4px',
+  },
+  modulesTagsRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '4px',
+  },
+  moduleSmallPill: {
+    fontSize: '11px',
+    padding: '2px 6px',
+    borderRadius: 'var(--radius-full)',
+    backgroundColor: 'var(--color-surface-elevated)',
+    color: 'var(--color-ink)',
+    border: '1px solid var(--color-outline)',
   },
   cardFooter: {
     display: 'flex',
     justifyContent: 'flex-end',
     borderTop: '1px solid var(--color-outline)',
-    paddingTop: '8px',
+    paddingTop: '10px',
+    marginTop: 'auto',
   },
   cardFooterLink: {
-    fontSize: '12px',
+    fontSize: '13px',
     fontWeight: 800,
     color: 'var(--color-sky-deep)',
     display: 'inline-flex',

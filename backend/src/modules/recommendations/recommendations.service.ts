@@ -179,6 +179,49 @@ Selecciona el curso más idóneo y responde ÚNICAMENTE en JSON con formato:
   }
 
   /**
+   * SPEC-007 (RF-1): Obtiene cursos activos del catálogo curricular para el diagnóstico
+   */
+  async getAvailableCourses() {
+    const courses = await this.prisma.course.findMany({
+      where: { status: CourseStatus.PUBLISHED },
+      include: {
+        category: true,
+        modules: {
+          orderBy: { order: 'asc' },
+          include: {
+            lessons: {
+              orderBy: { order: 'asc' },
+              select: { id: true, title: true, order: true, contextText: true },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    return courses
+      .filter((course) => course.modules.some((m) => m.lessons.length > 0))
+      .map((course) => {
+        const totalLessons = course.modules.reduce((acc, m) => acc + m.lessons.length, 0);
+        return {
+          id: course.id,
+          title: course.title,
+          description: course.description,
+          category: course.category?.name || 'General',
+          modulesCount: course.modules.length,
+          lessonsCount: totalLessons,
+          modules: course.modules.map((m) => ({
+            id: m.id,
+            title: m.title,
+            order: m.order,
+            lessonsCount: m.lessons.length,
+            lessons: m.lessons,
+          })),
+        };
+      });
+  }
+
+  /**
    * SPEC-007 (RF-1): Obtiene módulos activos del catálogo curricular para el diagnóstico
    */
   async getAvailableModules() {
@@ -340,24 +383,172 @@ Responde ÚNICAMENTE en JSON válido con la siguiente estructura:
   }
 
   /**
+   * SPEC-007: Genera preguntas de diagnóstico para un curso completo evaluando sus módulos y lecciones
+   */
+  async generateCourseDiagnostic(courseId: string) {
+    const course = await this.prisma.course.findUnique({
+      where: { id: courseId },
+      include: {
+        category: true,
+        modules: {
+          orderBy: { order: 'asc' },
+          include: {
+            lessons: {
+              orderBy: { order: 'asc' },
+            },
+          },
+        },
+      },
+    });
+
+    if (!course || course.modules.length === 0) {
+      throw new NotFoundException(
+        'El curso seleccionado no cuenta con módulos o lecciones suficientes para generar un diagnóstico.',
+      );
+    }
+
+    const allLessons = course.modules.flatMap((m) =>
+      m.lessons.map((l) => ({
+        id: l.id,
+        title: l.title,
+        order: l.order,
+        moduleId: m.id,
+        moduleTitle: m.title,
+        context: l.contextText || l.title,
+      })),
+    );
+
+    if (allLessons.length === 0) {
+      throw new NotFoundException(
+        'El curso seleccionado no cuenta con lecciones registradas para generar un diagnóstico.',
+      );
+    }
+
+    const fallbackGenerator = () => {
+      const fallbackQuestions = allLessons.slice(0, 6).map((lesson, idx) => ({
+        id: `diag-q-${lesson.id}-${idx}`,
+        lessonId: lesson.id,
+        lessonTitle: lesson.title,
+        text: `Respecto a "${lesson.title}": ¿Qué aspecto clave aborda según su Resumen Pedagógico?`,
+        options: [
+          `Fundamentos y aplicación práctica de ${lesson.title}`,
+          'Estructuras obsoletas no utilizadas en el estándar moderno',
+          'Sintaxis de bibliotecas descontinuadas',
+          'Configuraciones externas no relacionadas con el contenido pedagógico',
+        ],
+        correctOptionIndex: 0,
+      }));
+
+      return {
+        title: `Diagnóstico de Conocimientos Previos: ${course.title}`,
+        courseId: course.id,
+        courseTitle: course.title,
+        questions: fallbackQuestions,
+      };
+    };
+
+    const prompt = `Actúa como diseñador pedagógico y evaluador de Skylearn.
+Curso curricular: "${course.title}". Categoría: "${course.category?.name || 'General'}".
+Lecciones reales disponibles con su Resumen Pedagógico de la Clase:
+${allLessons.map((l) => `- Lección ${l.order} de "${l.moduleTitle}" (id: "${l.id}"): "${l.title}".
+  Resumen Pedagógico de la Clase: "${l.context}"`).join('\n')}
+
+Genera un examen de diagnóstico inteligente de conocimientos previos de entre 4 y 6 preguntas de opción múltiple (4 opciones por pregunta).
+REGLAS ESTRICTAS:
+1. Cada pregunta DEBE evaluar directamente un concepto o competencia descrita en el "Resumen Pedagógico de la Clase" de una lección real del curso.
+2. Cada pregunta debe incluir exactamente el "lessonId" correspondiente a la lección cuyo resumen pedagógico evalúa.
+3. "correctOptionIndex" debe ser un número entre 0 y 3 indicando la opción correcta.
+4. Distribuye las preguntas de forma equilibrada a lo largo de las lecciones del curso.
+
+Responde ÚNICAMENTE en JSON válido con la siguiente estructura:
+{
+  "title": "Diagnóstico de Conocimientos Previos: ${course.title}",
+  "courseId": "${course.id}",
+  "courseTitle": "${course.title}",
+  "questions": [
+    {
+      "id": string,
+      "lessonId": string,
+      "lessonTitle": string,
+      "text": string,
+      "options": [string, string, string, string],
+      "correctOptionIndex": number
+    }
+  ]
+}`;
+
+    const aiResult = await this.geminiService.generateJson(prompt, fallbackGenerator);
+
+    const validLessonIds = new Set(allLessons.map((l) => l.id));
+    const rawQuestions = Array.isArray(aiResult?.questions) ? aiResult.questions : [];
+    const normalizedQuestions = rawQuestions.map((q: any, i: number) => {
+      const lessonMatch = validLessonIds.has(q.lessonId)
+        ? allLessons.find((l) => l.id === q.lessonId)
+        : allLessons[i % allLessons.length];
+
+      return {
+        id: q.id || `diag-q-${i}`,
+        lessonId: lessonMatch?.id || allLessons[0].id,
+        lessonTitle: lessonMatch?.title || allLessons[0].title,
+        text: q.text || `Pregunta sobre ${lessonMatch?.title}`,
+        options:
+          Array.isArray(q.options) && q.options.length >= 2
+            ? q.options
+            : ['Opción A', 'Opción B', 'Opción C', 'Opción D'],
+        correctOptionIndex: typeof q.correctOptionIndex === 'number' ? q.correctOptionIndex : 0,
+      };
+    });
+
+    return {
+      title: aiResult?.title || `Diagnóstico: ${course.title}`,
+      courseId: course.id,
+      courseTitle: course.title,
+      questions: normalizedQuestions.length > 0 ? normalizedQuestions : fallbackGenerator().questions,
+    };
+  }
+
+  /**
    * SPEC-007 (RF-9 a RF-16):
    * Analiza las respuestas del diagnóstico, detecta conocimientos dominados y pendientes,
    * e indica la lección exacta recomendada para comenzar el aprendizaje (costo 0 créditos).
    */
   async evaluateModuleDiagnostic(userId: string, dto: EvaluateDiagnosticDto) {
-    const module = await this.prisma.module.findUnique({
-      where: { id: dto.moduleId },
-      include: {
-        course: true,
-        lessons: { orderBy: { order: 'asc' } },
-      },
-    });
+    let targetCourse: any = null;
+    let lessons: Array<{ id: string; title: string; order: number }> = [];
+    let entityTitle = '';
 
-    if (!module || module.lessons.length === 0) {
-      throw new NotFoundException('Módulo no encontrado o sin lecciones disponibles.');
+    if (dto.courseId) {
+      targetCourse = await this.prisma.course.findUnique({
+        where: { id: dto.courseId },
+        include: {
+          modules: {
+            orderBy: { order: 'asc' },
+            include: { lessons: { orderBy: { order: 'asc' } } },
+          },
+        },
+      });
+      if (!targetCourse) throw new NotFoundException('Curso no encontrado.');
+      lessons = targetCourse.modules.flatMap((m: any) => m.lessons);
+      entityTitle = targetCourse.title;
+    } else if (dto.moduleId) {
+      const module = await this.prisma.module.findUnique({
+        where: { id: dto.moduleId },
+        include: {
+          course: true,
+          lessons: { orderBy: { order: 'asc' } },
+        },
+      });
+      if (!module) throw new NotFoundException('Módulo no encontrado.');
+      targetCourse = module.course;
+      lessons = module.lessons;
+      entityTitle = module.title;
+    } else {
+      throw new NotFoundException('Se requiere courseId o moduleId para evaluar el diagnóstico.');
     }
 
-    const lessons = module.lessons;
+    if (lessons.length === 0) {
+      throw new NotFoundException('La entidad curricular no cuenta con lecciones disponibles para evaluar.');
+    }
     const totalQuestions = dto.answers.length;
     let correctCount = 0;
 
@@ -438,27 +629,27 @@ Responde ÚNICAMENTE en JSON válido con la siguiente estructura:
     }
 
     // Inscribir al estudiante automáticamente al curso sin costo de créditos (RF-04.1)
-    if (userId) {
+    if (userId && targetCourse) {
       await this.prisma.enrollment.upsert({
         where: {
           userId_courseId: {
             userId,
-            courseId: module.course.id,
+            courseId: targetCourse.id,
           },
         },
         update: {},
         create: {
           userId,
-          courseId: module.course.id,
+          courseId: targetCourse.id,
         },
       });
     }
 
     return {
-      moduleId: module.id,
-      moduleTitle: module.title,
-      courseId: module.course.id,
-      courseTitle: module.course.title,
+      moduleId: dto.moduleId || targetCourse?.modules?.[0]?.id || '',
+      moduleTitle: entityTitle,
+      courseId: targetCourse.id,
+      courseTitle: targetCourse.title,
       knowledgeLevel,
       scorePercentage,
       totalQuestions,

@@ -27,11 +27,25 @@ export class RecommendationsController {
     return this.recommendationsService.submitQuiz(req.user.id, dto);
   }
 
+  @Get('courses')
+  @ApiOperation({ summary: 'Listar cursos disponibles del catálogo curricular para diagnóstico inteligente (RF-1)' })
+  @ApiResponse({ status: 200, description: 'Cursos activos con módulos y número de lecciones' })
+  async getAvailableCourses() {
+    return this.recommendationsService.getAvailableCourses();
+  }
+
   @Get('modules')
   @ApiOperation({ summary: 'Listar módulos disponibles del catálogo curricular para diagnóstico inteligente (RF-1)' })
   @ApiResponse({ status: 200, description: 'Módulos activos con información de lecciones' })
   async getAvailableModules() {
     return this.recommendationsService.getAvailableModules();
+  }
+
+  @Get('diagnostic/course/:courseId')
+  @ApiOperation({ summary: 'Generar examen de diagnóstico inteligente con IA para un curso completo' })
+  @ApiResponse({ status: 200, description: 'Preguntas contextualizadas con lecciones reales del curso' })
+  async generateCourseDiagnostic(@Param('courseId') courseId: string) {
+    return this.recommendationsService.generateCourseDiagnostic(courseId);
   }
 
   @Get('diagnostic/:moduleId')
