@@ -253,16 +253,16 @@ Selecciona el curso más idóneo y responde ÚNICAMENTE en JSON con formato:
     }));
 
     const fallbackGenerator = () => {
-      const fallbackQuestions = module.lessons.slice(0, 5).map((lesson, idx) => ({
+      const fallbackQuestions = module.lessons.slice(0, 6).map((lesson, idx) => ({
         id: `diag-q-${lesson.id}-${idx}`,
         lessonId: lesson.id,
         lessonTitle: lesson.title,
-        text: `¿Qué concepto clave se aborda principalmente en "${lesson.title}"?`,
+        text: `Respecto a "${lesson.title}": ¿Qué aspecto clave aborda según su Resumen Pedagógico?`,
         options: [
-          `Fundamentos y aplicación de ${lesson.title}`,
-          'Estructuras obsoletas no utilizadas',
+          `Fundamentos y aplicación práctica de ${lesson.title}`,
+          'Estructuras obsoletas no utilizadas en el estándar moderno',
           'Sintaxis de bibliotecas descontinuadas',
-          'Configuraciones externas no relacionadas con el tema',
+          'Configuraciones externas no relacionadas con el contenido pedagógico',
         ],
         correctOptionIndex: 0,
       }));
@@ -278,13 +278,14 @@ Selecciona el curso más idóneo y responde ÚNICAMENTE en JSON con formato:
 
     const prompt = `Actúa como diseñador pedagógico y evaluador de Skylearn.
 Módulo curricular: "${module.title}" del curso "${module.course.title}".
-Lecciones reales disponibles:
-${lessonsData.map((l) => `- Lección (id: "${l.id}", orden: ${l.order}): "${l.title}". Contexto didáctico: "${l.context}"`).join('\n')}
+Lecciones reales disponibles con su Resumen Pedagógico de la Clase:
+${lessonsData.map((l) => `- Lección ${l.order} (id: "${l.id}"): "${l.title}".
+  Resumen Pedagógico de la Clase: "${l.context}"`).join('\n')}
 
 Genera un examen de diagnóstico inteligente de conocimientos previos de entre 4 y 6 preguntas de opción múltiple (4 opciones por pregunta).
 REGLAS ESTRICTAS:
-1. Cada pregunta DEBE evaluar un concepto concreto de una de las lecciones reales indicadas.
-2. Cada pregunta debe incluir exactamente el "lessonId" correspondiente.
+1. Cada pregunta DEBE evaluar directamente un concepto o competencia descrita en el "Resumen Pedagógico de la Clase" de una lección real.
+2. Cada pregunta debe incluir exactamente el "lessonId" correspondiente a la lección cuyo resumen pedagógico evalúa.
 3. "correctOptionIndex" debe ser un número entre 0 y 3 indicando la opción correcta.
 4. Distribuye las preguntas de forma equilibrada a lo largo de las lecciones del módulo.
 
@@ -402,23 +403,38 @@ Responde ÚNICAMENTE en JSON válido con la siguiente estructura:
       }
     });
 
-    // Lección recomendada: primera lección pendiente según orden curricular
-    let recommendedLesson =
-      pendingLessons.length > 0
-        ? lessons.find((l) => l.id === pendingLessons[0].id) || lessons[0]
-        : lessons[lessons.length - 1];
-
+    // Determinación del punto de partida según SPEC-007:
     let knowledgeLevel: 'Principiante' | 'Intermedio' | 'Avanzado' = 'Principiante';
     if (scorePercentage >= 80) knowledgeLevel = 'Avanzado';
     else if (scorePercentage >= 50) knowledgeLevel = 'Intermedio';
 
+    let recommendedLesson = lessons[0];
     let justification = '';
-    if (scorePercentage >= 80) {
-      justification = `¡Excelente dominio! Demuestras conocimientos sólidos en la mayoría de los temas de "${module.title}". Te recomendamos comenzar directamente desde "${recommendedLesson.title}" para no repetir conceptos que ya conoces.`;
-    } else if (scorePercentage >= 50) {
-      justification = `Tienes una base positiva sobre los temas iniciales, pero detectamos conceptos que debes reforzar. Te sugerimos iniciar en "${recommendedLesson.title}".`;
-    } else {
-      justification = `Estás dando tus primeros pasos en "${module.title}". Te sugerimos comenzar desde el inicio en "${recommendedLesson.title}" para construir unas bases sólidas paso a paso.`;
+
+    // REGLA 1: Fallo total (0% de aciertos o respondió todo mal) -> Comienza obligatoriamente en Lección 1
+    if (scorePercentage === 0 || correctCount === 0) {
+      recommendedLesson = lessons[0];
+      knowledgeLevel = 'Principiante';
+      justification = `Debido a que respondiste incorrectamente a las preguntas del cuestionario (0% de aciertos), te recomendamos comenzar obligatoriamente desde la primera lección ("${lessons[0].title}") para aprender las bases pedagógicas paso a paso desde cero.`;
+    }
+    // REGLA 2: Dominio completo (100% de aciertos o sin temas pendientes)
+    else if (pendingLessons.length === 0 || scorePercentage === 100) {
+      recommendedLesson = lessons[lessons.length - 1];
+      knowledgeLevel = 'Avanzado';
+      const masteredNames = masteredLessons.map((m) => m.title).join(', ');
+      justification = `¡Felicitaciones! Has demostrado un dominio completo de todos los contenidos clave del módulo (${masteredNames}). No necesitas empezar desde cero; te recomendamos ir a la lección final ("${recommendedLesson.title}") de proyectos o continuar al siguiente módulo.`;
+    }
+    // REGLA 3: Avance progresivo (No empezar de cero) -> Salta lecciones iniciales dominadas
+    else {
+      const firstPending = lessons.find((l) => pendingLessons.some((p) => p.id === l.id)) || lessons[0];
+      recommendedLesson = firstPending;
+
+      if (recommendedLesson.order > 1 && masteredLessons.length > 0) {
+        const masteredNames = masteredLessons.map((m) => m.title).join(', ');
+        justification = `¡Excelente progreso! Has demostrado dominar los contenidos iniciales (${masteredNames}), por lo que no necesitas empezar desde cero. Te recomendamos comenzar directamente en la lección ${recommendedLesson.order} ("${recommendedLesson.title}").`;
+      } else {
+        justification = `Detectamos que requieres afianzar los conceptos fundamentales de la lección 1 ("${recommendedLesson.title}"). Te sugerimos iniciar desde esta clase para construir bases firmes.`;
+      }
     }
 
     // Inscribir al estudiante automáticamente al curso sin costo de créditos (RF-04.1)

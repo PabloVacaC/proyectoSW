@@ -203,7 +203,33 @@ describe('SPEC-007: Diagnóstico Inteligente de Conocimientos Previos (BDD E2E)'
   });
 
   describe('RF-9 a RF-17: Evaluación Pedagógica y Recomendación de Inicio', () => {
-    it('Given un alumno que responde el diagnóstico demostrando dominio parcial, When envía sus respuestas, Then recibe categorización de dominados/pendientes y lección recomendada sin costo de créditos', async () => {
+    it('Given un alumno que responde incorrectamente todo el cuestionario, When envía sus respuestas, Then recomienda obligatoriamente comenzar en la Lección 1 (orden 1)', async () => {
+      const payload = {
+        moduleId: demoModuleId,
+        answers: [
+          { questionId: 'q-1', lessonId: demoLesson1Id, selectedOptionIndex: 1, isCorrect: false },
+          { questionId: 'q-2', lessonId: demoLesson2Id, selectedOptionIndex: 2, isCorrect: false },
+          { questionId: 'q-3', lessonId: demoLesson3Id, selectedOptionIndex: 3, isCorrect: false },
+        ],
+      };
+
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/recommendations/diagnostic/evaluate')
+        .set('Authorization', `Bearer ${studentToken}`)
+        .send(payload)
+        .expect(201);
+
+      expect(res.body.scorePercentage).toBe(0);
+      expect(res.body.correctAnswers).toBe(0);
+      expect(res.body.knowledgeLevel).toBe('Principiante');
+      // Incondicional: Comienza en Lección 1
+      expect(res.body.recommendedLesson.id).toBe(demoLesson1Id);
+      expect(res.body.recommendedLesson.order).toBe(1);
+      expect(res.body.justification).toContain('primera lección');
+      expect(studentCredits).toBe(3);
+    });
+
+    it('Given un alumno que responde el diagnóstico demostrando dominio parcial, When envía sus respuestas, Then no empieza desde cero y salta a la lección donde necesita aprender', async () => {
       const payload = {
         moduleId: demoModuleId,
         answers: [
@@ -246,12 +272,37 @@ describe('SPEC-007: Diagnóstico Inteligente de Conocimientos Previos (BDD E2E)'
       // Lecciones pendientes
       expect(res.body.pendingLessons.some((l: any) => l.id === demoLesson2Id)).toBe(true);
 
-      // Lección recomendada para iniciar debe ser la primera pendiente (demoLesson2Id)
+      // Lección recomendada para iniciar debe ser la primera pendiente (demoLesson2Id, orden 2)
       expect(res.body.recommendedLesson.id).toBe(demoLesson2Id);
-      expect(res.body.justification).toBeDefined();
-      expect(res.body.justification.length).toBeGreaterThan(10);
+      expect(res.body.recommendedLesson.order).toBe(2);
+      expect(res.body.justification).toContain('no necesitas empezar desde cero');
 
       // Verificar invariante: el balance de créditos del estudiante no fue alterado
+      expect(studentCredits).toBe(3);
+    });
+
+    it('Given un alumno que responde correctamente todo el cuestionario, When envía sus respuestas, Then clasifica en nivel Avanzado y recomienda lección final de consolidación', async () => {
+      const payload = {
+        moduleId: demoModuleId,
+        answers: [
+          { questionId: 'q-1', lessonId: demoLesson1Id, selectedOptionIndex: 0, isCorrect: true },
+          { questionId: 'q-2', lessonId: demoLesson2Id, selectedOptionIndex: 0, isCorrect: true },
+          { questionId: 'q-3', lessonId: demoLesson3Id, selectedOptionIndex: 0, isCorrect: true },
+        ],
+      };
+
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/recommendations/diagnostic/evaluate')
+        .set('Authorization', `Bearer ${studentToken}`)
+        .send(payload)
+        .expect(201);
+
+      expect(res.body.scorePercentage).toBe(100);
+      expect(res.body.correctAnswers).toBe(3);
+      expect(res.body.knowledgeLevel).toBe('Avanzado');
+      expect(res.body.masteredLessons.length).toBe(3);
+      expect(res.body.recommendedLesson.id).toBe(demoLesson3Id);
+      expect(res.body.justification).toContain('dominio completo');
       expect(studentCredits).toBe(3);
     });
   });

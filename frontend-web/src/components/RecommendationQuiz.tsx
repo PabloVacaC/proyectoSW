@@ -229,11 +229,21 @@ export const RecommendationQuiz: React.FC<RecommendationQuizProps> = ({
       // Fallback heurístico en cliente para garantizar que el usuario nunca quede atrapado (RF-23, RNF-5)
       const correctCount = answersPayload.filter((a) => a.isCorrect).length;
       const scorePercentage = Math.round((correctCount / questions.length) * 100);
-      const mastered = selectedModule.lessons.filter((_, idx) =>
+
+      const mastered = scorePercentage === 0 ? [] : selectedModule.lessons.filter((_, idx) =>
         scorePercentage >= 75 ? true : idx === 0,
       );
       const pending = selectedModule.lessons.filter((l) => !mastered.some((m) => m.id === l.id));
       const targetLesson = pending[0] || selectedModule.lessons[0];
+
+      let justification = '';
+      if (scorePercentage === 0) {
+        justification = `Debido a que respondiste incorrectamente a las preguntas del cuestionario (0% de aciertos), te recomendamos comenzar obligatoriamente desde la primera lección ("${selectedModule.lessons[0].title}") para aprender las bases pedagógicas paso a paso desde cero.`;
+      } else if (mastered.length > 0 && targetLesson.order > 1) {
+        justification = `¡Excelente progreso! Has demostrado conocimientos previos en los temas iniciales, por lo que no necesitas empezar desde cero. Te recomendamos comenzar directamente en la lección ${targetLesson.order} ("${targetLesson.title}").`;
+      } else {
+        justification = `Te recomendamos iniciar en "${targetLesson.title}" para consolidar tus competencias en este módulo curricular.`;
+      }
 
       setEvaluationResult({
         moduleId: selectedModule.id,
@@ -252,7 +262,7 @@ export const RecommendationQuiz: React.FC<RecommendationQuizProps> = ({
           order: targetLesson?.order || 1,
           url: `/lessons/${targetLesson?.id || 'demo-lesson'}`,
         },
-        justification: `Basado en tu evaluación (${correctCount}/${questions.length} correctas), te recomendamos iniciar en "${targetLesson?.title}" para maximizar tu avance curricular.`,
+        justification,
       });
       setMode('result');
       confetti({
@@ -296,10 +306,10 @@ export const RecommendationQuiz: React.FC<RecommendationQuizProps> = ({
         {mode === 'select_module' && (
           <div style={styles.content}>
             <div style={{ textAlign: 'left', marginBottom: '8px' }}>
-              <h2 style={styles.mainTitle}>¿Qué módulo deseas aprender hoy?</h2>
+              <h2 style={styles.mainTitle}>Cursos y Módulos Curriculares Disponibles</h2>
               <p style={styles.mainSubtitle}>
-                Selecciona el módulo que te interesa. Nuestra IA analizará sus lecciones reales para
-                determinar tu nivel de conocimientos previos y recomendarte exactamente dónde comenzar.
+                Selecciona el módulo que deseas aprender. Nuestra IA analizará el <strong>Resumen Pedagógico</strong> de sus lecciones
+                para determinar tus conocimientos previos y recomendarte la lección exacta donde debes empezar, ¡evitando que tengas que comenzar desde cero!
               </p>
             </div>
 
@@ -553,9 +563,20 @@ export const RecommendationQuiz: React.FC<RecommendationQuizProps> = ({
 
             {/* Tarjeta de Lección Recomendada (RF-14, RF-15, RF-17) */}
             <div style={styles.recommendationCard}>
-              <span style={styles.recBadge}>Lección Recomendada para Comenzar</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                <span style={styles.recBadge}>Lección Recomendada para Comenzar</span>
+                {evaluationResult.recommendedLesson.order > 1 ? (
+                  <span style={{ fontSize: '11px', fontWeight: 800, padding: '2px 8px', borderRadius: '12px', backgroundColor: 'var(--color-leaf-soft)', color: 'var(--color-leaf-deep)' }}>
+                    🎉 ¡No empiezas desde cero!
+                  </span>
+                ) : (
+                  <span style={{ fontSize: '11px', fontWeight: 800, padding: '2px 8px', borderRadius: '12px', backgroundColor: 'var(--color-sky-soft)', color: 'var(--color-sky-deep)' }}>
+                    🚀 Fundamentos desde la Lección 1
+                  </span>
+                )}
+              </div>
               <h4 style={styles.recLessonTitle}>
-                {evaluationResult.recommendedLesson.title}
+                Lección {evaluationResult.recommendedLesson.order}: {evaluationResult.recommendedLesson.title}
               </h4>
               <p style={styles.recJustification}>{evaluationResult.justification}</p>
               <span style={styles.freeNotice}>
