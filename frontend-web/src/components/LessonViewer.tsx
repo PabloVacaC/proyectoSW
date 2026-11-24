@@ -88,17 +88,26 @@ export const LessonViewer: React.FC<LessonViewerProps> = ({
     setActiveTab('context');
   }, [lesson.id]);
 
-  // Helper para convertir URL estándar de YouTube a embed URL
+  // Helper para convertir URL estándar de YouTube a embed URL forzando inicio desde 0s
   const getEmbedUrl = (url: string) => {
     try {
-      if (!url) return 'https://www.youtube.com/embed/dQw4w9WgXcQ';
-      if (url.includes('embed/')) return url;
-      const urlObj = new URL(url);
-      if (urlObj.hostname === 'youtu.be') {
-        return `https://www.youtube.com/embed/${urlObj.pathname.slice(1)}`;
+      if (!url) return 'https://www.youtube.com/embed/dQw4w9WgXcQ?start=0&enablejsapi=1&rel=0';
+      let videoId = '';
+      if (url.includes('embed/')) {
+        const parts = url.split('embed/');
+        videoId = parts[1]?.split('?')[0]?.split('&')[0] || '';
+      } else if (url.includes('youtu.be/')) {
+        const parts = url.split('youtu.be/');
+        videoId = parts[1]?.split('?')[0]?.split('&')[0] || '';
+      } else {
+        const urlObj = new URL(url);
+        videoId = urlObj.searchParams.get('v') || '';
       }
-      const v = urlObj.searchParams.get('v');
-      return v ? `https://www.youtube.com/embed/${v}` : url;
+
+      if (videoId) {
+        return `https://www.youtube.com/embed/${videoId}?start=0&enablejsapi=1&rel=0`;
+      }
+      return url;
     } catch {
       return url;
     }
@@ -176,6 +185,7 @@ export const LessonViewer: React.FC<LessonViewerProps> = ({
           <div style={styles.videoPlayerCard}>
             <div style={styles.iframeWrapper}>
               <iframe
+                key={`${lesson.id}-${lesson.videoUrl}`}
                 src={getEmbedUrl(lesson.videoUrl)}
                 title={lesson.title}
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"

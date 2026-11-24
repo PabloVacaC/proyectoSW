@@ -441,6 +441,7 @@ export function App() {
       ) : mainSegment === 'lessons' && activeLesson ? (
         /* VISTA: VISOR DE LECCIÓN */
         <LessonViewer
+          key={activeLesson.id}
           lesson={activeLesson}
           onBack={() => {
             if (courseContext?.courseId) {
