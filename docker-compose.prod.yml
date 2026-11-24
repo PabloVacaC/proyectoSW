@@ -16,6 +16,9 @@ services:
     image: ollama/ollama:latest
     container_name: skylearn-ollama-prod
     restart: unless-stopped
+    environment:
+      OLLAMA_KEEP_ALIVE: "24h"
+      OLLAMA_NUM_PARALLEL: "1"
     volumes:
       - ollama_data:/root/.ollama
     ports:
@@ -41,7 +44,7 @@ services:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5-coder:1.5b}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-AQ.Ab8RN6K4DIYPMBSuhKlsRN6-BnMc1nPEx9tk7zeCI9LanUFDZA}
-      GEMINI_DEFAULT_MODEL: ${GEMINI_DEFAULT_MODEL:-gemini-3-flash-preview}
+      GEMINI_DEFAULT_MODEL: ${GEMINI_DEFAULT_MODEL:-gemini-2.0-flash}
       GEMINI_LIVE_MODEL: ${GEMINI_LIVE_MODEL:-}
       AZURE_SPEECH_KEY: ${AZURE_SPEECH_KEY:-}
       AZURE_SPEECH_REGION: ${AZURE_SPEECH_REGION:-}

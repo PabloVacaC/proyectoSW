@@ -17,9 +17,11 @@ export class GeminiService implements OnModuleInit {
   private readonly ollamaModel: string;
   private readonly ollamaFallbackModel = 'llama3.2:latest';
 
-  // Cascada de modelos vigentes para Google Gemini (Nube)
+  // Cascada de modelos vigentes para Google Gemini (Nube de alta velocidad)
   private readonly fallbackModels = [
-    'gemini-3-flash-preview',
+    'gemini-2.0-flash',
+    'gemini-1.5-flash',
+    'gemini-1.5-flash-8b',
   ];
 
   constructor(private readonly configService: ConfigService) {
@@ -30,6 +32,7 @@ export class GeminiService implements OnModuleInit {
     const apiKey = this.configService.get<string>('GEMINI_API_KEY');
     const isPlaceholderKey =
       !apiKey ||
+      !apiKey.startsWith('AIzaSy') ||
       apiKey === 'AIzaSyDemoKeyForDevelopmentMode2026' ||
       apiKey === 'AIzaSyTuClaveRealDeGeminiAqui' ||
       apiKey === 'demo_key' ||
@@ -124,10 +127,11 @@ export class GeminiService implements OnModuleInit {
             prompt,
             stream: false,
             format: 'json',
+            keep_alive: '60m',
             options: {
               temperature: 0.2,
-              num_predict: 180,
-              num_thread: 4,
+              num_predict: 140,
+              num_thread: 2,
             },
           }),
           signal: controller.signal,
@@ -186,9 +190,11 @@ export class GeminiService implements OnModuleInit {
             model,
             prompt,
             stream: false,
+            keep_alive: '60m',
             options: {
               temperature: 0.4,
-              num_predict: 350,
+              num_predict: 180,
+              num_thread: 2,
             },
           }),
           signal: controller.signal,
