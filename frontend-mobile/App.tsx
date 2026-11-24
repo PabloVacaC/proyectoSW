@@ -1,5 +1,5 @@
 // frontend-mobile/App.tsx
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import {
   StyleSheet,
@@ -17,7 +17,12 @@ import {
 import axios from 'axios';
 import * as Notifications from 'expo-notifications';
 import { SkylearnColors, SkylearnRadii, SkylearnShadows } from './src/theme/skylearn';
-import { BACKEND_URL, registerForPushNotificationsAsync } from './src/services/notifications';
+import {
+  BACKEND_URL,
+  registerForPushNotificationsAsync,
+  sendWelcomePushNotification,
+  sendCustomPushNotification,
+} from './src/services/notifications';
 
 // --- Tipos de Datos (SPEC-006) ---
 interface DashboardData {
@@ -183,7 +188,7 @@ export default function App() {
   // Iniciar Sesión Docente
   const handleLogin = async () => {
     try {
-      const result = await axios.post<{ accessToken: string; user: { role: string } }>(
+      const result = await axios.post<{ accessToken: string; user: { role: string; name?: string } }>(
         `${BACKEND_URL}/auth/login`,
         { email, password }
       );
@@ -194,6 +199,9 @@ export default function App() {
       setPassword('');
       setToken(result.data.accessToken);
       setAuthError('');
+
+      // Emitir notificación push emergente estilo WhatsApp de bienvenida al ingresar
+      void sendWelcomePushNotification(result.data.user?.name);
     } catch {
       setAuthError('Credenciales incorrectas o servidor no disponible.');
     }
@@ -271,10 +279,17 @@ export default function App() {
     ]);
   };
 
+  const welcomeSentRef = useRef(false);
+
   // Efecto de inicialización y listeners
   useEffect(() => {
     if (!token) return;
     void refreshDashboard(token);
+
+    if (!welcomeSentRef.current) {
+      welcomeSentRef.current = true;
+      void sendWelcomePushNotification();
+    }
 
     void registerForPushNotificationsAsync(token)
       .then((registered) => {
@@ -762,6 +777,12 @@ export default function App() {
               onPress={() => void refreshDashboard(token)}
             >
               <Text style={styles.actionBtnText}>🔄 Actualizar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionBtn, { borderColor: '#25D366' }]}
+              onPress={() => void sendWelcomePushNotification('Docente')}
+            >
+              <Text style={[styles.actionBtnText, { color: '#128C7E' }]}>💬 Probar Push</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.actionBtn, { borderColor: SkylearnColors.coral }]}
