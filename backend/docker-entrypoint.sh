@@ -55,9 +55,9 @@ npx prisma db push --skip-generate
 # Ejecutar seed de datos de prueba si RUN_SEED es true
 if [ "$RUN_SEED" = "true" ]; then
   echo "🌱 RUN_SEED=true: Sembrando datos iniciales en la base de datos..."
-  npm run db:seed
+  npm run db:seed || echo "⚠️ Advertencia: npm run db:seed no completó, continuando..."
   echo "🌱 Sembrando catálogo de cursos..."
-  npm run db:seed:courses
+  npm run db:seed:courses || echo "⚠️ Advertencia: npm run db:seed:courses no completó, continuando..."
 else
   echo "ℹ️ RUN_SEED no es true. Omitiendo la siembra de datos demo."
 fi

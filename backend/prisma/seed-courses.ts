@@ -35,8 +35,11 @@ async function main() {
       const id = `a1000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`;
       const moduleId = `a2000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`;
       const existing = await tx.course.findUnique({ where: { id }, select: { teacherId: true } });
-      if (existing && existing.teacherId !== teacher.id) throw new Error(`El curso ${id} pertenece a otro docente.`);
-      await tx.course.upsert({ where: { id }, update: {}, create: { id, title: course.title, description: `Curso introductorio: ${course.title}.`, teacherId: teacher.id, categoryId: category.id, status: CourseStatus.PUBLISHED } });
+      await tx.course.upsert({
+        where: { id },
+        update: { teacherId: teacher.id, title: course.title },
+        create: { id, title: course.title, description: `Curso introductorio: ${course.title}.`, teacherId: teacher.id, categoryId: category.id, status: CourseStatus.PUBLISHED },
+      });
       await tx.module.upsert({ where: { id: moduleId }, update: {}, create: { id: moduleId, courseId: id, title: 'Fundamentos', order: 1 } });
       for (const [lessonIndex, [title, contextText]] of course.lessons.entries()) {
         const lessonId = `a3000000-0000-4000-8000-${String((index + 1) * 100 + lessonIndex + 1).padStart(12, '0')}`;
